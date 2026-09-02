@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ЖК Инфопанель</string>
+    <string name="portal_url">https://lk.purehome.ru/</string>
+    <string name="portal_host">lk.purehome.ru</string>
+
+    <string name="offline_title">Нет подключения к интернету</string>
+    <string name="offline_retry">Повторная попытка через %1$d сек…</string>
+    <string name="session_expired_hint">Требуется повторный вход в личный кабинет (обратитесь в УК)</string>
+
+    <string name="admin_pin_title">Код обслуживания</string>
+    <string name="admin_pin_hint">Введите ПИН</string>
+    <string name="admin_pin_wrong">Неверный ПИН</string>
+
+    <string name="admin_menu_title">Меню обслуживания</string>
+    <string name="admin_menu_reload">Обновить страницу</string>
+    <string name="admin_menu_wifi">Настройки Wi-Fi</string>
+    <string name="admin_menu_resume_kiosk">Вернуться в киоск-режим</string>
+    <string name="admin_menu_version">Версия: %1$s</string>
+</resources>

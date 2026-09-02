@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="kiosk_background">#0B1220</color>
+    <color name="kiosk_text">#FFFFFF</color>
+    <color name="kiosk_accent">#3D7BF7</color>
+</resources>

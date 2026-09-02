@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Только для боевого "kiosk"-варианта: делаем приложение доступным как замена
+  системного Home-экрана, чтобы кнопка Home не давала выйти из приложения,
+  даже если Screen Pinning почему-то снят. В "dev"-варианте этого нет,
+  чтобы не перехватывать Home на личном телефоне при разработке.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity android:name=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
