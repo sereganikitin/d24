@@ -14,7 +14,40 @@ kiosk-режиме, не даёт экрану гаснуть и не даёт �
   fullscreen + Screen Pinning + автозапуск после перезагрузки + замена
   Home-экрана + автоперезапуск при крэше.
 
-## Открыть проект
+## Сборка APK через Codemagic (без Android Studio на этом компьютере)
+
+В проекте уже есть `codemagic.yaml` и рабочий Gradle wrapper (скачан
+официальный `gradle-wrapper.jar`, не сгенерирован вручную) — сборка в
+облаке настроена и готова.
+
+1. Создать репозиторий на GitHub (или GitLab/Bitbucket, если Codemagic у
+   вас подключён к нему) и запушить туда этот проект. На этом компьютере
+   для GitHub нет рабочего SSH-ключа (проверено — есть ключи только под
+   другие серверы), так что проще всего через HTTPS:
+   ```
+   git remote add origin https://github.com/<ваш-логин>/ds24-kiosk.git
+   git push -u origin main
+   ```
+   При пуше Git спросит логин/пароль — вместо пароля нужен Personal
+   Access Token (GitHub → Settings → Developer settings → Personal
+   access tokens → Fine-grained token с правом Contents: Read and write
+   на этот репозиторий).
+2. В Codemagic: Add application → выбрать этот репозиторий. Codemagic
+   сам увидит `codemagic.yaml` в корне и предложит workflow
+   `ds24-kiosk-debug`.
+3. Запустить сборку (Start new build). По готовности в интерфейсе
+   Codemagic появится ссылка на артефакты — два APK:
+   `app-dev-debug.apk` (для теста на личном телефоне) и
+   `app-kiosk-debug.apk` (боевой вариант для планшета). Также придёт
+   письмо на почту с уведомлением о готовности сборки.
+4. Скачать `app-dev-debug.apk` на телефон и установить (может
+   понадобиться разрешить установку "из неизвестных источников").
+
+Дальше при каждом изменении кода: закоммитить, `git push`, запустить
+сборку в Codemagic заново (или настроить автосборку по пушу в
+Codemagic → Workflow settings → Triggering).
+
+## Открыть проект в Android Studio (если всё же понадобится)
 
 Открыть папку `ds24-kiosk` в Android Studio (File → Open). При первом
 Sync студия предложит скачать недостающие компоненты SDK (compileSdk 34) —
