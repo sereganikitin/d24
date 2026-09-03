@@ -1,44 +1,147 @@
 /*
- * Правки раскладки поверх lk.purehome.ru для главного экрана киоска:
- * уменьшаем картинки в блоке "Актуальное" сильнее, чем в "Услуги", чтобы
- * весь главный экран помещался без прокрутки.
+ * Правки раскладки/оформления поверх lk.purehome.ru под фирменный стиль
+ * Pure (белый / тёплый чёрный / кофейно-коричневый) и под киоск (главный
+ * экран без прокрутки).
  *
  * Не завязано на "css-XXXXXXX" классы MUI/emotion (они генерируются
- * заново при каждой пересборке сайта) — ищем секции по тексту заголовка
- * ("Актуальное" / "Услуги"), это гораздо стабильнее. Если вёрстка сайта
- * сильно поменяется и заголовок перестанет находиться — блок просто
- * тихо ничего не делает, страницу не ломает.
+ * заново при каждой пересборке сайта вендором) — ищем элементы по
+ * тексту, который на них написан. Это медленнее для поддержки (менять
+ * приходится по факту, глядя на реальные экраны), зато не ломается
+ * молча при любом редизайне сайта — если текст не нашёлся, блок просто
+ * ничего не делает.
  *
- * Подбирайте heightPx под реальный планшет и правьте прямо этот файл —
- * пересборка Kotlin не нужна.
+ * Правьте прямо этот файл — пересборка Kotlin не нужна, только
+ * пересборка через Codemagic/GitHub Actions.
  */
 (function () {
-    function findSectionByHeading(text) {
-        var candidates = document.querySelectorAll('h1,h2,h3,h4,h5,span,div,p');
-        for (var i = 0; i < candidates.length; i++) {
-            var el = candidates[i];
-            if (el.children.length === 0 && el.textContent.trim() === text) {
-                // Заголовок обычно лежит в строке "Заголовок + ссылка Все",
-                // а сама строка — внутри секции вместе с сеткой карточек.
-                return el.closest('section') || (el.parentElement && el.parentElement.parentElement) || el.parentElement;
-            }
+    var PURE = {
+        ink: '#201B16',
+        inkSoft: '#6B6156',
+        surface: '#F5F1EC',
+        brand: '#6B4F36',
+        brandTint: '#EDE1D2',
+        urgent: '#C1512E',
+        urgentText: '#FFFFFF',
+    };
+
+    function findLeafByText(text) {
+        var all = document.querySelectorAll('h1,h2,h3,h4,h5,span,div,p,a,button');
+        for (var i = 0; i < all.length; i++) {
+            var el = all[i];
+            if (el.children.length === 0 && el.textContent.trim() === text) return el;
         }
         return null;
     }
 
+    // ---------- Главный экран: "Актуальное" мельче, чем "Услуги" ----------
+    function findSectionByHeading(text) {
+        var leaf = findLeafByText(text);
+        if (!leaf) return null;
+        return leaf.closest('section') || (leaf.parentElement && leaf.parentElement.parentElement) || leaf.parentElement;
+    }
+
     function shrinkImages(container, heightPx) {
         if (!container) return;
-        var imgs = container.querySelectorAll('img');
-        imgs.forEach(function (img) {
+        container.querySelectorAll('img').forEach(function (img) {
             img.style.setProperty('height', heightPx + 'px', 'important');
             img.style.setProperty('object-fit', 'cover', 'important');
         });
     }
 
+    // ---------- Боковая панель: карточки + сетка быстрых действий ----------
+    function closestRow(el) {
+        return el.closest('button,a,[role="button"],li') || el.parentElement;
+    }
+
+    function recolorIcon(row, color) {
+        var svg = row.querySelector('svg');
+        if (!svg) return;
+        svg.style.setProperty('color', color, 'important');
+        svg.querySelectorAll('path,circle,rect').forEach(function (shape) {
+            if (shape.getAttribute('stroke') && shape.getAttribute('stroke') !== 'none') {
+                shape.setAttribute('stroke', color);
+            }
+            if (shape.getAttribute('fill') && shape.getAttribute('fill') !== 'none') {
+                shape.setAttribute('fill', color);
+            }
+        });
+        // сам бейдж-кружок/квадрат вокруг иконки — обычно ближайший div/span-родитель svg
+        var badge = svg.parentElement;
+        if (badge && badge !== row) {
+            badge.style.setProperty('border-radius', '10px', 'important');
+        }
+    }
+
+    function styleActionRow(row, bg, badgeBg, iconColor, textColor) {
+        if (!row) return;
+        row.style.setProperty('display', 'flex', 'important');
+        row.style.setProperty('align-items', 'center', 'important');
+        row.style.setProperty('gap', '12px', 'important');
+        row.style.setProperty('background', bg, 'important');
+        row.style.setProperty('border', 'none', 'important');
+        row.style.setProperty('border-radius', '14px', 'important');
+        row.style.setProperty('padding', '14px 12px', 'important');
+        row.style.setProperty('margin', '0', 'important');
+        row.style.setProperty('color', textColor, 'important');
+        var svg = row.querySelector('svg');
+        var badge = svg ? svg.parentElement : null;
+        if (badge && badge !== row) {
+            badge.style.setProperty('background', badgeBg, 'important');
+        }
+        recolorIcon(row, iconColor);
+    }
+
+    function restyleQuickActions() {
+        var regularLabels = ['Показания счетчиков', 'Создать обращение', 'Смотреть камеры', 'Заказать пропуск'];
+        var rows = [];
+        regularLabels.forEach(function (text) {
+            var row = closestRow(findLeafByText(text));
+            if (row) {
+                rows.push(row);
+                styleActionRow(row, PURE.surface, PURE.brandTint, PURE.brand, PURE.ink);
+            }
+        });
+
+        var sosRow = closestRow(findLeafByText('Экстренный вызов'));
+        styleActionRow(sosRow, PURE.urgent, 'rgba(255,255,255,.2)', '#FFFFFF', PURE.urgentText);
+
+        // Если 4 обычных пункта лежат в одном родителе вместе с "Экстренный
+        // вызов" — превращаем список в сетку 2×2 (СОС на всю ширину сверху)
+        // просто меняя display у общего родителя, без переноса узлов —
+        // так не потеряются обработчики кликов сайта.
+        if (rows.length === 4 && sosRow) {
+            var parent = rows[0].parentElement;
+            var sameParent = rows.every(function (r) { return r.parentElement === parent; })
+                && sosRow.parentElement === parent;
+            if (sameParent) {
+                parent.style.setProperty('display', 'grid', 'important');
+                parent.style.setProperty('grid-template-columns', '1fr 1fr', 'important');
+                parent.style.setProperty('gap', '8px', 'important');
+                sosRow.style.setProperty('grid-column', '1 / -1', 'important');
+            }
+        }
+    }
+
+    function restyleStatusCard() {
+        var leaf = findLeafByText('Всё оплачено');
+        if (!leaf) return;
+        // Поднимаемся на уровень карточки (текст статуса + подпись "К оплате").
+        var card = leaf.parentElement && leaf.parentElement.parentElement
+            ? leaf.parentElement.parentElement
+            : leaf.parentElement;
+        if (!card) return;
+        card.style.setProperty('background', PURE.surface, 'important');
+        card.style.setProperty('border-radius', '14px', 'important');
+        card.style.setProperty('border-left', '3px solid ' + PURE.brand, 'important');
+        leaf.style.setProperty('color', PURE.ink, 'important');
+    }
+
     try {
         shrinkImages(findSectionByHeading('Актуальное'), 56);
         shrinkImages(findSectionByHeading('Услуги'), 92);
+        restyleQuickActions();
+        restyleStatusCard();
     } catch (e) {
-        // не мешаем странице работать, даже если структура не совпала
+        // не мешаем странице работать, даже если что-то из структуры не совпало
     }
 })();
