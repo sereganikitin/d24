@@ -3,6 +3,7 @@ import { callGemini } from './providers/gemini.js';
 import { callClaude } from './providers/claude.js';
 import { callYandexGpt } from './providers/yandexgpt.js';
 import { synthesizeSpeech } from './providers/yandex-tts.js';
+import { classifyPassTypeByKeywords } from './prompt.js';
 
 /**
  * Прокси между киоском и LLM: держит API-ключ на своей стороне (в
@@ -36,12 +37,25 @@ app.post('/assist', async (req, res) => {
     }
     const history = Array.isArray(req.body && req.body.history) ? req.body.history : [];
 
+    // knownFields — то, что клиент уже подтвердил на предыдущих шагах
+    // этого разговора; сервер не даёт модели это переписать (см.
+    // enforceKnownFields в prompt.js — там же объяснение, почему это
+    // важно). passType по возможности определяем разбором ключевых слов
+    // ещё до обращения к модели — надёжнее, чем полагаться на LLM.
+    const knownFields = (req.body && req.body.knownFields && typeof req.body.knownFields === 'object')
+        ? { ...req.body.knownFields }
+        : {};
+    if (!knownFields.passType) {
+        const guessed = classifyPassTypeByKeywords(transcript);
+        if (guessed) knownFields.passType = guessed;
+    }
+
     const providerName = String(process.env.LLM_PROVIDER || 'yandexgpt').toLowerCase();
     const call = PROVIDERS[providerName] || callYandexGpt;
     const env = process.env;
 
     try {
-        const result = await call({ transcript, history, env });
+        const result = await call({ transcript, history, knownFields, env });
         res.json(result);
     } catch (err) {
         console.error('assist error:', err);

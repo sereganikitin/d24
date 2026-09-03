@@ -61,6 +61,14 @@ class VoiceAssistant(
     private var mediaPlayer: MediaPlayer? = null
     private val history = mutableListOf<Pair<String, String>>() // role to text
 
+    // Поля пропуска, уже подтверждённые на предыдущих шагах этого
+    // разговора. Отправляются backend'у и он их не даёт модели
+    // переписать (сервер и так это форсирует, но раз уж сохраняем —
+    // заодно и обновляем локально из каждого ответа). Без этого модель
+    // на многошаговом диалоге путала/подменяла уже названные ФИО и
+    // госномер — небезопасно для системы, которая выдаёт пропуска.
+    private var knownFields = JSONObject()
+
     // Приветствие говорится один раз в начале разговора (пока не
     // сброшено вместе с history — см. endSession()), а не при каждом
     // нажатии кнопки внутри одного и того же диалога.
@@ -215,6 +223,7 @@ class VoiceAssistant(
                     put(JSONObject().apply { put("role", role); put("text", text) })
                 }
             })
+            put("knownFields", knownFields)
         }
         val connection = URL(BACKEND_URL).openConnection() as HttpURLConnection
         connection.requestMethod = "POST"
@@ -233,6 +242,7 @@ class VoiceAssistant(
     }
 
     private fun handleResponse(response: JSONObject) {
+        response.optJSONObject("fields")?.let { knownFields = it }
         when (response.optString("type")) {
             "ask" -> {
                 val question = response.optNullableString("question", "Уточните, пожалуйста")
@@ -261,6 +271,7 @@ class VoiceAssistant(
     /** Разговор завершён — следующее нажатие кнопки снова начнётся с приветствия. */
     private fun endSession() {
         history.clear()
+        knownFields = JSONObject()
         hasGreeted = false
     }
 

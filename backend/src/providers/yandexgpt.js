@@ -1,4 +1,4 @@
-import { buildOpenAiMessages, buildSystemPrompt, RESPONSE_SCHEMA } from '../prompt.js';
+import { buildOpenAiMessages, buildSystemPrompt, enforceKnownFields, RESPONSE_SCHEMA } from '../prompt.js';
 
 const DEFAULT_MODEL = 'yandexgpt/latest';
 const ENDPOINT = 'https://ai.api.cloud.yandex.net/v1/chat/completions';
@@ -14,7 +14,7 @@ const ENDPOINT = 'https://ai.api.cloud.yandex.net/v1/chat/completions';
  * Ключ и folder id — в AI Studio (aistudio.yandex.ru): создать API-ключ
  * и скопировать folder id (наводкой на имя папки вверху экрана).
  */
-export async function callYandexGpt({ transcript, history, env }) {
+export async function callYandexGpt({ transcript, history, knownFields, env }) {
     const apiKey = env.YANDEX_API_KEY;
     const folderId = env.YANDEX_FOLDER_ID;
     if (!apiKey || !folderId) {
@@ -24,7 +24,7 @@ export async function callYandexGpt({ transcript, history, env }) {
     const modelUri = `gpt://${folderId}/${modelName}`;
 
     const messages = [
-        { role: 'system', content: buildSystemPrompt() },
+        { role: 'system', content: buildSystemPrompt(knownFields) },
         ...buildOpenAiMessages(transcript, history),
     ];
 
@@ -56,9 +56,14 @@ export async function callYandexGpt({ transcript, history, env }) {
         && data.choices[0].message && data.choices[0].message.content;
     if (!content) throw new Error('YandexGPT returned no content');
 
+    let parsed;
     try {
-        return JSON.parse(content);
+        parsed = JSON.parse(content);
     } catch {
         throw new Error('YandexGPT returned non-JSON content: ' + content.slice(0, 200));
     }
+    // Модель не может ни подтвердить, ни изменить уже известные поля —
+    // сервер принудительно подставляет доверенные значения поверх её
+    // ответа (см. подробное объяснение в prompt.js).
+    return enforceKnownFields(parsed, knownFields);
 }
