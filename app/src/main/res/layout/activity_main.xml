@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/rootContainer"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -53,16 +54,18 @@
         android:textSize="12sp"
         android:visibility="gone" />
 
-    <ImageButton
+    <com.airbnb.lottie.LottieAnimationView
         android:id="@+id/voiceAssistantButton"
-        android:layout_width="64dp"
-        android:layout_height="64dp"
+        android:layout_width="88dp"
+        android:layout_height="105dp"
         android:layout_gravity="bottom|start"
-        android:layout_margin="20dp"
-        android:background="@drawable/bg_voice_fab"
+        android:layout_margin="12dp"
+        android:clickable="true"
+        android:focusable="true"
         android:contentDescription="@string/voice_assistant_button"
-        android:padding="18dp"
-        android:src="@drawable/ic_mic" />
+        app:lottie_rawRes="@raw/scout"
+        app:lottie_loop="true"
+        app:lottie_autoPlay="false" />
 
     <!--
       Скрытая зона обслуживания: удержание пальца ~3 сек в этом углу

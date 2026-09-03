@@ -3,7 +3,6 @@ package ru.uk.ds24kiosk
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -244,13 +243,20 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
     }
 
     private fun renderVoiceButtonState(state: VoiceAssistant.State) {
-        val colorRes = when (state) {
-            VoiceAssistant.State.LISTENING, VoiceAssistant.State.THINKING -> R.color.pure_brand_tint
-            VoiceAssistant.State.IDLE, VoiceAssistant.State.SPEAKING -> R.color.kiosk_accent
+        val lottie = binding.voiceAssistantButton
+        when (state) {
+            // Персонаж (scout.json) пока одна сплошная анимация без
+            // отдельных сегментов под каждое состояние — "оживает" на
+            // время всего взаимодействия и замирает в ожидании. Когда
+            // появится анимация с именованными сегментами под
+            // idle/listening/thinking/speaking, здесь нужно будет играть
+            // конкретный отрезок через setMinAndMaxFrame(...) вместо
+            // play/pause всего ролика целиком.
+            VoiceAssistant.State.IDLE -> lottie.pauseAnimation()
+            VoiceAssistant.State.LISTENING, VoiceAssistant.State.THINKING, VoiceAssistant.State.SPEAKING -> {
+                if (!lottie.isAnimating) lottie.playAnimation()
+            }
         }
-        (binding.voiceAssistantButton.background as? GradientDrawable)?.setColor(
-            ContextCompat.getColor(this, colorRes),
-        )
     }
 
     private fun onAdminGestureTriggered() {
