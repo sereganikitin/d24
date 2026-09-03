@@ -63,6 +63,7 @@
         android:layout_marginBottom="100dp"
         android:clickable="true"
         android:focusable="true"
+        android:visibility="gone"
         android:contentDescription="@string/voice_assistant_button"
         app:lottie_rawRes="@raw/scout"
         app:lottie_loop="true"

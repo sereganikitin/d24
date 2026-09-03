@@ -67,6 +67,7 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
     private val idleReturnRunnable = object : Runnable {
         override fun run() {
             checkIdleReturn()
+            refreshAuthState(binding.webView)
             mainHandler.postDelayed(this, IDLE_CHECK_INTERVAL_MS)
         }
     }
@@ -178,7 +179,7 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
 
     override fun onPageLoaded(webView: WebView, url: String?) {
         hideOfflineOverlay()
-        detectLoginScreen(webView)
+        refreshAuthState(webView)
         KioskStyleInjector.injectAll(this, webView)
     }
 
@@ -208,11 +209,23 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
         mainHandler.postDelayed(runnable, 1000)
     }
 
-    private fun detectLoginScreen(webView: WebView) {
+    /**
+     * Один и тот же признак ("виден ли экран логина") используется для
+     * двух вещей: показать бейдж "сессия истекла" и скрыть голосового
+     * помощника, пока не залогинились (заполнять форму пропуска до входа
+     * всё равно нельзя, а кнопка-микрофон только сбивала бы с толку).
+     * Вызывается не только один раз при загрузке страницы, но и
+     * периодически (см. idleReturnRunnable) — это SPA, переход от
+     * экрана логина к главному после ввода SMS-кода происходит без
+     * перезагрузки страницы, обычный onPageLoaded это не поймает.
+     */
+    private fun refreshAuthState(webView: WebView) {
         val js = "document.body && document.body.innerText && " +
             "document.body.innerText.indexOf('Для входа в личный кабинет') !== -1"
         webView.evaluateJavascript(js) { result ->
-            binding.sessionExpiredBadge.visibility = if (result == "true") View.VISIBLE else View.GONE
+            val onLoginScreen = result == "true"
+            binding.sessionExpiredBadge.visibility = if (onLoginScreen) View.VISIBLE else View.GONE
+            binding.voiceAssistantButton.visibility = if (onLoginScreen) View.GONE else View.VISIBLE
         }
     }
 
