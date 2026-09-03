@@ -258,10 +258,15 @@
     };
 
     function applyAll() {
-        shrinkImages(findSectionByHeading('Актуальное'), 56);
-        shrinkImages(findSectionByHeading('Услуги'), 92);
-        restyleQuickActions();
-        restyleStatusCard();
+        // Визуальные правки (размер картинок, перекраска панели) временно
+        // выключены по запросу — на реальном устройстве результат вышел
+        // не тот, настроим аккуратно позже. Функциональные вещи (скрытие
+        // "Постоянный", API для голосового помощника) продолжают работать
+        // — это не про внешний вид, а про то, что должно быть так.
+        // shrinkImages(findSectionByHeading('Актуальное'), 56);
+        // shrinkImages(findSectionByHeading('Услуги'), 92);
+        // restyleQuickActions();
+        // restyleStatusCard();
         hidePermanentPassOption();
     }
 
