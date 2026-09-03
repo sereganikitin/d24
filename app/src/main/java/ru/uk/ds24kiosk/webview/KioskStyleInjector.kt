@@ -2,30 +2,54 @@ package ru.uk.ds24kiosk.webview
 
 import android.content.Context
 import android.util.Base64
+import android.util.Log
 import android.webkit.WebView
+import java.net.HttpURLConnection
+import java.net.URL
 
 /**
  * Внедряет кастомные CSS/JS поверх страницы из lk.purehome.ru — точка
  * "перевёрстки" чужого сайта под киоск (укрупнить шрифты/кнопки, сжать
- * главный экран, чтобы влезал без прокрутки, скрыть/переставить блоки).
- * Правки лежат отдельными файлами в assets/, чтобы их можно было менять
- * без пересборки Kotlin-кода:
- *  - kiosk-inject.css — чистые CSS-правки, вставляются как <style>.
- *  - kiosk-inject.js — JS-правки там, где одного CSS не хватает
- *    (например, нужно найти секцию по тексту заголовка).
+ * главный экран, чтобы влезал без прокрутки, перекрасить в бренд-палитру
+ * и т.п.).
+ *
+ * Правки лежат отдельными файлами (kiosk-inject.css / kiosk-inject.js),
+ * и на каждой загрузке страницы сначала пробуем скачать их свежую
+ * версию с GitHub (raw-файл из репозитория проекта) — так правки стилей
+ * применяются сразу на всех установленных киосках без пересборки и
+ * переустановки APK. Если сети нет или репозиторий недоступен (например,
+ * с этой сети заблокирован raw.githubusercontent.com) — используем
+ * копию, зашитую в assets/ при сборке, так что оформление не пропадает
+ * совсем, просто не обновляется мгновенно.
  */
 object KioskStyleInjector {
+
+    private const val TAG = "KioskStyleInjector"
 
     private const val CSS_ASSET = "kiosk-inject.css"
     private const val JS_ASSET = "kiosk-inject.js"
 
+    // Поменяется, если репозиторий/ветка/путь к файлам изменятся.
+    private const val REMOTE_BASE =
+        "https://raw.githubusercontent.com/sereganikitin/d24/main/app/src/main/assets/"
+    private const val FETCH_TIMEOUT_MS = 3000
+
     fun injectAll(context: Context, webView: WebView) {
-        injectCss(context, webView)
-        injectLayoutTweaks(context, webView)
+        loadContent(context, webView, CSS_ASSET) { css -> injectCss(webView, css) }
+        loadContent(context, webView, JS_ASSET) { js -> webView.evaluateJavascript(js, null) }
     }
 
-    private fun injectCss(context: Context, webView: WebView) {
-        val css = readAsset(context, CSS_ASSET) ?: return
+    /** Сеть — в фоновом потоке, применение к WebView — обратно на главном. */
+    private fun loadContent(context: Context, webView: WebView, assetName: String, onReady: (String) -> Unit) {
+        Thread {
+            val content = fetchRemote(assetName) ?: readAsset(context, assetName)
+            if (content != null) {
+                webView.post { onReady(content) }
+            }
+        }.start()
+    }
+
+    private fun injectCss(webView: WebView, css: String) {
         val encoded = Base64.encodeToString(css.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
         val js = """
             (function() {
@@ -42,9 +66,24 @@ object KioskStyleInjector {
         webView.evaluateJavascript(js, null)
     }
 
-    private fun injectLayoutTweaks(context: Context, webView: WebView) {
-        val js = readAsset(context, JS_ASSET) ?: return
-        webView.evaluateJavascript(js, null)
+    private fun fetchRemote(assetName: String): String? = try {
+        val connection = URL(REMOTE_BASE + assetName).openConnection() as HttpURLConnection
+        connection.connectTimeout = FETCH_TIMEOUT_MS
+        connection.readTimeout = FETCH_TIMEOUT_MS
+        connection.requestMethod = "GET"
+        try {
+            if (connection.responseCode == HttpURLConnection.HTTP_OK) {
+                connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            } else {
+                Log.w(TAG, "Remote $assetName returned HTTP ${connection.responseCode}, using bundled copy")
+                null
+            }
+        } finally {
+            connection.disconnect()
+        }
+    } catch (e: Exception) {
+        Log.w(TAG, "Remote $assetName unavailable (${e.message}), using bundled copy")
+        null
     }
 
     private fun readAsset(context: Context, name: String): String? = try {
