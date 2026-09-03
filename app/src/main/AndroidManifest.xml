@@ -7,6 +7,24 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+    <!--
+      Без этого на Android 11+ SpeechRecognizer.isRecognitionAvailable()
+      и resolveActivity() для ACTION_RECOGNIZE_SPEECH возвращают "ничего
+      не найдено", даже если распознавание речи на устройстве реально
+      работает (например, голосовой поиск в самом приложении Google) —
+      это ограничение видимости пакетов (package visibility), наше
+      приложение по умолчанию не видит чужие сервисы, пока явно не
+      попросит через <queries>.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
