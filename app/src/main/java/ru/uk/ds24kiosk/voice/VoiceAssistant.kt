@@ -173,19 +173,19 @@ class VoiceAssistant(
     private fun handleResponse(response: JSONObject) {
         when (response.optString("type")) {
             "ask" -> {
-                val question = response.optString("question", "Уточните, пожалуйста")
+                val question = response.optNullableString("question", "Уточните, пожалуйста")
                 history.add("assistant" to question)
                 speak(question, UTTERANCE_ASK)
             }
             "fill" -> {
-                val say = response.optString("say", "Готово, проверьте форму")
+                val say = response.optNullableString("say", "Готово, проверьте форму")
                 val fields = response.optJSONObject("fields") ?: JSONObject()
                 fillForm(fields)
                 history.clear()
                 speak(say, UTTERANCE_FINAL)
             }
             "error" -> {
-                val message = response.optString("message", "Не получилось разобрать запрос")
+                val message = response.optNullableString("message", "Не получилось разобрать запрос")
                 history.clear()
                 speak(message, UTTERANCE_FINAL)
             }
@@ -195,6 +195,17 @@ class VoiceAssistant(
             }
         }
     }
+
+    /**
+     * response_format=json_schema у YandexGPT требует, чтобы все поля
+     * были в required — необязательные по смыслу поля модель вместо
+     * пропуска возвращает как JSON null. Обычный JSONObject.optString
+     * этого не видит: для null-значения has(key) истинно, и возвращается
+     * буквальная строка "null", а не наш дефолт — поэтому проверяем
+     * isNull() отдельно.
+     */
+    private fun JSONObject.optNullableString(key: String, default: String): String =
+        if (isNull(key)) default else optString(key, default)
 
     private fun fillForm(fields: JSONObject) {
         webView.evaluateJavascript(

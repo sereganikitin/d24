@@ -10,27 +10,43 @@
  * когда увидим соответствующие экраны.
  */
 
+// "Strict" JSON-схема (как в OpenAI structured outputs) — YandexGPT
+// (и, скорее всего, любой другой OpenAI-совместимый провайдер) требует,
+// чтобы ВСЕ поля из properties были в required, без исключений; поля,
+// которые по смыслу необязательны, вместо этого допускают null через
+// type: [..., 'null']. Проверено на реальном ответе YandexGPT — без
+// этого API отвечает 400 "all fields must be required".
+//
+// У Gemini (сейчас не используется — блокирует Россию, см.
+// backend/README.md) свой диалект той же идеи: там вместо type: [...,
+// 'null'] используется отдельный флаг nullable: true, а required можно
+// оставлять неполным. Если Gemini вернётся в строй через релей — эту
+// схему для него нужно будет адаптировать отдельно, один в один она не
+// подойдёт.
 export const RESPONSE_SCHEMA = {
     type: 'object',
     properties: {
         type: { type: 'string', enum: ['ask', 'fill', 'error'] },
-        question: { type: 'string' },
-        say: { type: 'string' },
-        action: { type: 'string', enum: ['order_car_pass'] },
+        question: { type: ['string', 'null'] },
+        say: { type: ['string', 'null'] },
+        action: { type: ['string', 'null'], enum: ['order_car_pass', null] },
         fields: {
-            type: 'object',
+            type: ['object', 'null'],
             properties: {
-                ownership: { type: 'string', enum: ['guest', 'own'] },
-                visitDate: { type: 'string' },
-                plateNumber: { type: 'string' },
-                plateType: { type: 'string' },
-                carLabel: { type: 'string' },
-                guestName: { type: 'string' },
+                ownership: { type: ['string', 'null'], enum: ['guest', 'own', null] },
+                visitDate: { type: ['string', 'null'] },
+                plateNumber: { type: ['string', 'null'] },
+                plateType: { type: ['string', 'null'] },
+                carLabel: { type: ['string', 'null'] },
+                guestName: { type: ['string', 'null'] },
             },
+            required: ['ownership', 'visitDate', 'plateNumber', 'plateType', 'carLabel', 'guestName'],
+            additionalProperties: false,
         },
-        message: { type: 'string' },
+        message: { type: ['string', 'null'] },
     },
-    required: ['type'],
+    required: ['type', 'question', 'say', 'action', 'fields', 'message'],
+    additionalProperties: false,
 };
 
 export function buildSystemPrompt() {
