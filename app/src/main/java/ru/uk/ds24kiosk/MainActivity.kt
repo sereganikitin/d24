@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
 import android.provider.Settings
 import android.view.MotionEvent
 import android.view.View
@@ -32,6 +33,16 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
     private var retryRunnable: Runnable? = null
     private var longPressRunnable: Runnable? = null
 
+    // Автовозврат на главный экран, если планшет оставили на другой вкладке.
+    private var lastInteractionAt = SystemClock.elapsedRealtime()
+    private var homeUrl: String? = null
+    private val idleReturnRunnable = object : Runnable {
+        override fun run() {
+            checkIdleReturn()
+            mainHandler.postDelayed(this, IDLE_CHECK_INTERVAL_MS)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (BuildConfig.IS_KIOSK) CrashWatchdog.install(this)
@@ -44,9 +55,43 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
 
         setupWebView()
         setupAdminGesture()
+        mainHandler.postDelayed(idleReturnRunnable, IDLE_CHECK_INTERVAL_MS)
 
         if (BuildConfig.IS_KIOSK) requestIgnoreBatteryOptimizations()
     }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        mainHandler.removeCallbacksAndMessages(null)
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        lastInteractionAt = SystemClock.elapsedRealtime()
+        return super.dispatchTouchEvent(ev)
+    }
+
+    /**
+     * Если ушли с главного экрана (вкладка "Помещение"/"Обращения"/"Платежи"
+     * и т.п.) и минуту никто не трогал экран — возвращаемся на главный.
+     * "Главный экран" запоминаем автоматически по первому URL, в пути
+     * которого встречается "/main" (это то, что реально отдаёт сайт после
+     * входа — см. lk.purehome.ru/<id>/main/category).
+     */
+    private fun checkIdleReturn() {
+        val currentUrl = binding.webView.url ?: return
+        if (isHomeUrl(currentUrl)) {
+            homeUrl = currentUrl
+            return
+        }
+        val home = homeUrl ?: return
+        val idleFor = SystemClock.elapsedRealtime() - lastInteractionAt
+        if (idleFor >= IDLE_TIMEOUT_MS) {
+            binding.webView.loadUrl(home)
+            lastInteractionAt = SystemClock.elapsedRealtime()
+        }
+    }
+
+    private fun isHomeUrl(url: String): Boolean = url.contains("/main", ignoreCase = true)
 
     override fun onResume() {
         super.onResume()
@@ -104,7 +149,7 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
     override fun onPageLoaded(webView: WebView, url: String?) {
         hideOfflineOverlay()
         detectLoginScreen(webView)
-        KioskStyleInjector.inject(this, webView)
+        KioskStyleInjector.injectAll(this, webView)
     }
 
     private fun showOfflineOverlay() {
@@ -203,5 +248,7 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
     companion object {
         private const val OFFLINE_RETRY_SECONDS = 5
         private const val ADMIN_GESTURE_HOLD_MS = 3000L
+        private const val IDLE_TIMEOUT_MS = 60_000L
+        private const val IDLE_CHECK_INTERVAL_MS = 5_000L
     }
 }
