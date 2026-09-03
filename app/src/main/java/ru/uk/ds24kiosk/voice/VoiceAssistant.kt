@@ -15,6 +15,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Calendar
 import java.util.Locale
 
 /**
@@ -45,6 +46,11 @@ class VoiceAssistant(
     private var ttsReady = false
     private val history = mutableListOf<Pair<String, String>>() // role to text
 
+    // Приветствие говорится один раз в начале разговора (пока не
+    // сброшено вместе с history — см. endSession()), а не при каждом
+    // нажатии кнопки внутри одного и того же диалога.
+    private var hasGreeted = false
+
     // SpeechRecognizer нужно создавать/трогать с того же потока (обычно
     // главного), а колбэки TTS (UtteranceProgressListener) приходят не
     // гарантированно на главном потоке — поэтому всё, что течёт обратно в
@@ -60,7 +66,7 @@ class VoiceAssistant(
             override fun onStart(utteranceId: String?) {}
             override fun onDone(utteranceId: String?) {
                 mainHandler.post {
-                    if (utteranceId == UTTERANCE_ASK) {
+                    if (utteranceId == UTTERANCE_ASK || utteranceId == UTTERANCE_GREETING) {
                         startListening()
                     } else {
                         setState(State.IDLE)
@@ -76,6 +82,28 @@ class VoiceAssistant(
     }
 
     fun startListening() {
+        if (!hasGreeted) {
+            hasGreeted = true
+            val greeting = buildGreeting()
+            history.add("assistant" to greeting)
+            speak(greeting, UTTERANCE_GREETING)
+            return
+        }
+        beginRecognition()
+    }
+
+    private fun buildGreeting(): String {
+        val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        val timeOfDay = when (hour) {
+            in 5..11 -> "Доброе утро"
+            in 12..17 -> "Добрый день"
+            in 18..22 -> "Добрый вечер"
+            else -> "Доброй ночи"
+        }
+        return "$timeOfDay! Я голосовой помощник Pure. Как я могу к вам обращаться?"
+    }
+
+    private fun beginRecognition() {
         if (!SpeechRecognizer.isRecognitionAvailable(context)) {
             listener.onError("Распознавание речи недоступно на этом устройстве")
             return
@@ -181,19 +209,25 @@ class VoiceAssistant(
                 val say = response.optNullableString("say", "Готово, проверьте форму")
                 val fields = response.optJSONObject("fields") ?: JSONObject()
                 fillForm(fields)
-                history.clear()
+                endSession()
                 speak(say, UTTERANCE_FINAL)
             }
             "error" -> {
                 val message = response.optNullableString("message", "Не получилось разобрать запрос")
-                history.clear()
+                endSession()
                 speak(message, UTTERANCE_FINAL)
             }
             else -> {
-                history.clear()
+                endSession()
                 speak("Что-то пошло не так, попробуйте ещё раз", UTTERANCE_FINAL)
             }
         }
+    }
+
+    /** Разговор завершён — следующее нажатие кнопки снова начнётся с приветствия. */
+    private fun endSession() {
+        history.clear()
+        hasGreeted = false
     }
 
     /**
@@ -231,6 +265,7 @@ class VoiceAssistant(
 
     companion object {
         private const val TAG = "VoiceAssistant"
+        private const val UTTERANCE_GREETING = "ds24_greeting"
         private const val UTTERANCE_ASK = "ds24_ask"
         private const val UTTERANCE_FINAL = "ds24_final"
         private const val TIMEOUT_MS = 10_000
