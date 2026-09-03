@@ -2,6 +2,7 @@ import express from 'express';
 import { callGemini } from './providers/gemini.js';
 import { callClaude } from './providers/claude.js';
 import { callYandexGpt } from './providers/yandexgpt.js';
+import { synthesizeSpeech } from './providers/yandex-tts.js';
 
 /**
  * Прокси между киоском и LLM: держит API-ключ на своей стороне (в
@@ -45,6 +46,21 @@ app.post('/assist', async (req, res) => {
     } catch (err) {
         console.error('assist error:', err);
         res.status(502).json({ type: 'error', message: String((err && err.message) || err) });
+    }
+});
+
+app.post('/tts', async (req, res) => {
+    const text = String((req.body && req.body.text) || '').trim();
+    if (!text) {
+        return res.status(400).json({ error: 'text is required' });
+    }
+    try {
+        const audio = await synthesizeSpeech({ text, env: process.env });
+        res.set('content-type', 'audio/ogg');
+        res.send(audio);
+    } catch (err) {
+        console.error('tts error:', err);
+        res.status(502).json({ error: String((err && err.message) || err) });
     }
 });
 

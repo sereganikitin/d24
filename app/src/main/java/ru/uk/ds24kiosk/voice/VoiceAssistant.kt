@@ -2,6 +2,7 @@ package ru.uk.ds24kiosk.voice
 
 import android.content.Context
 import android.content.Intent
+import android.media.MediaPlayer
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -14,6 +15,7 @@ import android.util.Log
 import android.webkit.WebView
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Calendar
@@ -56,6 +58,7 @@ class VoiceAssistant(
     private var recognizer: SpeechRecognizer? = null
     private var tts: TextToSpeech? = null
     private var ttsReady = false
+    private var mediaPlayer: MediaPlayer? = null
     private val history = mutableListOf<Pair<String, String>>() // role to text
 
     // Приветствие говорится один раз в начале разговора (пока не
@@ -78,11 +81,7 @@ class VoiceAssistant(
             override fun onStart(utteranceId: String?) {}
             override fun onDone(utteranceId: String?) {
                 mainHandler.post {
-                    if (utteranceId == UTTERANCE_ASK || utteranceId == UTTERANCE_GREETING) {
-                        startListening()
-                    } else {
-                        setState(State.IDLE)
-                    }
+                    if (utteranceId != null) onSpeechFinished(utteranceId) else setState(State.IDLE)
                 }
             }
 
@@ -112,7 +111,10 @@ class VoiceAssistant(
             in 18..22 -> "Добрый вечер"
             else -> "Доброй ночи"
         }
-        return "$timeOfDay! Я голосовой помощник Pure. Как я могу к вам обращаться?"
+        // "Pure Home Comfort" пишем кириллицей по звучанию — иначе
+        // русский голос читает латиницу побуквенно ("пэ у эр е"),
+        // а так получается приемлемое английское произношение названия.
+        return "$timeOfDay! Я голосовой ассистент Пьюр Хоум Комфорт. Как я могу к вам обращаться?"
     }
 
     private fun beginRecognition() {
@@ -184,6 +186,8 @@ class VoiceAssistant(
         tts?.stop()
         tts?.shutdown()
         tts = null
+        mediaPlayer?.release()
+        mediaPlayer = null
     }
 
     private fun sendTranscript(transcript: String) {
@@ -278,13 +282,100 @@ class VoiceAssistant(
         )
     }
 
+    /**
+     * Сначала пробуем озвучить через Yandex SpeechKit (backend, /tts) —
+     * заметно естественнее и по умолчанию женский голос, в отличие от
+     * штатного Android TTS, чьё качество сильно зависит от устройства
+     * (см. проверку с телефоном без установленных голосов). Если сеть
+     * или сервис недоступны — тихо откатываемся на локальный TTS, чтобы
+     * помощник не терял голос совсем.
+     */
     private fun speak(text: String, utteranceId: String) {
         setState(State.SPEAKING)
+        Thread {
+            val audioFile = try {
+                fetchTtsAudio(text)
+            } catch (e: Exception) {
+                Log.w(TAG, "Cloud TTS unavailable (${e.message}), falling back to on-device", e)
+                null
+            }
+            webView.post {
+                if (audioFile != null) {
+                    playAudioFile(audioFile, utteranceId, text)
+                } else {
+                    speakOnDevice(text, utteranceId)
+                }
+            }
+        }.start()
+    }
+
+    private fun fetchTtsAudio(text: String): File {
+        val connection = URL(TTS_URL).openConnection() as HttpURLConnection
+        connection.requestMethod = "POST"
+        connection.doOutput = true
+        connection.connectTimeout = TIMEOUT_MS
+        connection.readTimeout = TIMEOUT_MS
+        connection.setRequestProperty("content-type", "application/json; charset=utf-8")
+        val body = JSONObject().put("text", text)
+        connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+        try {
+            if (connection.responseCode !in 200..299) {
+                error("HTTP ${connection.responseCode}")
+            }
+            val file = File.createTempFile("ds24_tts_", ".ogg", context.cacheDir)
+            connection.inputStream.use { input ->
+                file.outputStream().use { output -> input.copyTo(output) }
+            }
+            return file
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun playAudioFile(file: File, utteranceId: String, fallbackText: String) {
+        mediaPlayer?.release()
+        val mp = MediaPlayer()
+        mediaPlayer = mp
+        mp.setOnPreparedListener { it.start() }
+        mp.setOnCompletionListener {
+            cleanupPlayer(it, file)
+            onSpeechFinished(utteranceId)
+        }
+        mp.setOnErrorListener { player, _, _ ->
+            cleanupPlayer(player, file)
+            speakOnDevice(fallbackText, utteranceId)
+            true
+        }
+        try {
+            mp.setDataSource(file.absolutePath)
+            mp.prepareAsync()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to play cloud TTS audio, falling back to on-device", e)
+            cleanupPlayer(mp, file)
+            speakOnDevice(fallbackText, utteranceId)
+        }
+    }
+
+    private fun cleanupPlayer(mp: MediaPlayer, file: File) {
+        mp.release()
+        if (mediaPlayer === mp) mediaPlayer = null
+        file.delete()
+    }
+
+    private fun speakOnDevice(text: String, utteranceId: String) {
         if (ttsReady) {
             tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
         } else {
             // TTS не готов (например, на устройстве нет русского голоса) —
             // не блокируем сценарий молча, возвращаемся в ожидание.
+            setState(State.IDLE)
+        }
+    }
+
+    private fun onSpeechFinished(utteranceId: String) {
+        if (utteranceId == UTTERANCE_ASK || utteranceId == UTTERANCE_GREETING) {
+            startListening()
+        } else {
             setState(State.IDLE)
         }
     }
@@ -303,5 +394,6 @@ class VoiceAssistant(
         // Собственный сервер (не Cloudflare — из России без VPN не всегда
         // стабильно доступен), см. /backend/README.md.
         private const val BACKEND_URL = "https://d24-voice.infoseledka.ru/assist"
+        private const val TTS_URL = "https://d24-voice.infoseledka.ru/tts"
     }
 }

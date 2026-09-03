@@ -122,6 +122,14 @@ pm2 restart d24-voice-assist
 
 `GET /health` — простой healthcheck (`{"ok":true}`), без вызова LLM.
 
+`POST /tts`, тело `{"text": "..."}` — синтез речи через Yandex SpeechKit
+(голос `jane` по умолчанию, естественнее и человечнее штатного Android
+TTS; см. `YANDEX_TTS_VOICE` в `.env.example`, полный список голосов —
+[aistudio.yandex.ru/docs/en/speechkit/tts/voices.html](https://aistudio.yandex.ru/docs/en/speechkit/tts/voices.html)).
+Ответ — бинарные байты аудио (`content-type: audio/ogg`, OggOpus), не
+JSON. Приложение играет их через `MediaPlayer`, с откатом на локальный
+Android TTS, если этот запрос не удался.
+
 ## Смена провайдера на Claude/Gemini (если решат обходить региональные ограничения)
 
 1. В `.env` на сервере добавить `ANTHROPIC_API_KEY=...` (или `GEMINI_API_KEY=...`).
