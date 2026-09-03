@@ -10,6 +10,7 @@ import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.Settings
+import android.speech.RecognizerIntent
 import android.view.MotionEvent
 import android.view.View
 import android.webkit.CookieManager
@@ -46,6 +47,18 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
         } else {
             Toast.makeText(this, R.string.voice_mic_permission_needed, Toast.LENGTH_LONG).show()
         }
+    }
+
+    // Запасной способ распознавания речи — системный экран (не наш
+    // фирменный микрофон), для устройств, где нет встроенного
+    // SpeechRecognizer. См. VoiceAssistant.Listener.onNeedExternalRecognition.
+    private val externalRecognitionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val text = result.data
+            ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            ?.firstOrNull()
+        voiceAssistant.onExternalRecognitionResult(text)
     }
 
     // Автовозврат на главный экран, если планшет оставили на другой вкладке.
@@ -229,6 +242,10 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
 
             override fun onError(message: String) {
                 Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
+            }
+
+            override fun onNeedExternalRecognition(intent: Intent) {
+                externalRecognitionLauncher.launch(intent)
             }
         })
         binding.voiceAssistantButton.setOnClickListener {

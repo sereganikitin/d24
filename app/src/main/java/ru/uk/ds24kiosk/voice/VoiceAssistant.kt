@@ -1,6 +1,7 @@
 package ru.uk.ds24kiosk.voice
 
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -39,6 +40,17 @@ class VoiceAssistant(
     interface Listener {
         fun onStateChanged(state: State)
         fun onError(message: String)
+
+        /**
+         * Прямой SpeechRecognizer недоступен на устройстве (нет
+         * встроенного распознавания — так бывает на прошивках без
+         * штатного приложения "Google"/Speech Services). Пробуем
+         * запасной путь — системный экран распознавания через Intent;
+         * его может запустить только Activity, поэтому просим
+         * MainActivity сделать startActivityForResult и вернуть текст
+         * через onExternalRecognitionResult.
+         */
+        fun onNeedExternalRecognition(intent: Intent)
     }
 
     private var recognizer: SpeechRecognizer? = null
@@ -105,7 +117,13 @@ class VoiceAssistant(
 
     private fun beginRecognition() {
         if (!SpeechRecognizer.isRecognitionAvailable(context)) {
-            listener.onError("Распознавание речи недоступно на этом устройстве")
+            val fallbackIntent = buildRecognitionIntent()
+            if (fallbackIntent.resolveActivity(context.packageManager) != null) {
+                setState(State.LISTENING)
+                listener.onNeedExternalRecognition(fallbackIntent)
+            } else {
+                listener.onError("Распознавание речи недоступно на этом устройстве")
+            }
             return
         }
         recognizer?.destroy()
@@ -140,12 +158,24 @@ class VoiceAssistant(
             override fun onEvent(eventType: Int, params: Bundle?) {}
         })
 
-        val intent = android.content.Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+        setState(State.LISTENING)
+        r.startListening(buildRecognitionIntent())
+    }
+
+    private fun buildRecognitionIntent(): Intent =
+        Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU")
         }
-        setState(State.LISTENING)
-        r.startListening(intent)
+
+    /** Результат системного экрана распознавания — см. onNeedExternalRecognition. */
+    fun onExternalRecognitionResult(text: String?) {
+        if (text.isNullOrBlank()) {
+            setState(State.IDLE)
+            listener.onError("Не расслышал, попробуйте ещё раз")
+            return
+        }
+        sendTranscript(text)
     }
 
     fun release() {
