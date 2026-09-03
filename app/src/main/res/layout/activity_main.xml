@@ -53,6 +53,17 @@
         android:textSize="12sp"
         android:visibility="gone" />
 
+    <ImageButton
+        android:id="@+id/voiceAssistantButton"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:layout_gravity="bottom|start"
+        android:layout_margin="20dp"
+        android:background="@drawable/bg_voice_fab"
+        android:contentDescription="@string/voice_assistant_button"
+        android:padding="18dp"
+        android:src="@drawable/ic_mic" />
+
     <!--
       Скрытая зона обслуживания: удержание пальца ~3 сек в этом углу
       открывает диалог с ПИН. Незаметна для обычного жителя.

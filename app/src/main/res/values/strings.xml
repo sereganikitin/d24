@@ -17,4 +17,7 @@
     <string name="admin_menu_wifi">Настройки Wi-Fi</string>
     <string name="admin_menu_resume_kiosk">Вернуться в киоск-режим</string>
     <string name="admin_menu_version">Версия: %1$s</string>
+
+    <string name="voice_assistant_button">Голосовой помощник</string>
+    <string name="voice_mic_permission_needed">Нужен доступ к микрофону — включите в настройках приложения</string>
 </resources>

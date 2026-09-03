@@ -1,6 +1,9 @@
 package ru.uk.ds24kiosk
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -14,11 +17,15 @@ import android.webkit.CookieManager
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.view.WindowManager
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import ru.uk.ds24kiosk.databinding.ActivityMainBinding
+import ru.uk.ds24kiosk.voice.VoiceAssistant
 import ru.uk.ds24kiosk.webview.AndroidBridge
 import ru.uk.ds24kiosk.webview.KioskStyleInjector
 import ru.uk.ds24kiosk.webview.KioskWebChromeClient
@@ -32,6 +39,15 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
     private var retrySeconds = OFFLINE_RETRY_SECONDS
     private var retryRunnable: Runnable? = null
     private var longPressRunnable: Runnable? = null
+
+    private lateinit var voiceAssistant: VoiceAssistant
+    private val micPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            voiceAssistant.startListening()
+        } else {
+            Toast.makeText(this, R.string.voice_mic_permission_needed, Toast.LENGTH_LONG).show()
+        }
+    }
 
     // Автовозврат на главный экран, если планшет оставили на другой вкладке.
     private var lastInteractionAt = SystemClock.elapsedRealtime()
@@ -55,6 +71,7 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
 
         setupWebView()
         setupAdminGesture()
+        setupVoiceAssistant()
         mainHandler.postDelayed(idleReturnRunnable, IDLE_CHECK_INTERVAL_MS)
 
         if (BuildConfig.IS_KIOSK) requestIgnoreBatteryOptimizations()
@@ -63,6 +80,7 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
     override fun onDestroy() {
         super.onDestroy()
         mainHandler.removeCallbacksAndMessages(null)
+        if (::voiceAssistant.isInitialized) voiceAssistant.release()
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
@@ -202,6 +220,37 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
                 else -> false
             }
         }
+    }
+
+    private fun setupVoiceAssistant() {
+        voiceAssistant = VoiceAssistant(this, binding.webView, object : VoiceAssistant.Listener {
+            override fun onStateChanged(state: VoiceAssistant.State) {
+                renderVoiceButtonState(state)
+            }
+
+            override fun onError(message: String) {
+                Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
+            }
+        })
+        binding.voiceAssistantButton.setOnClickListener {
+            val hasPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED
+            if (hasPermission) {
+                voiceAssistant.startListening()
+            } else {
+                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            }
+        }
+    }
+
+    private fun renderVoiceButtonState(state: VoiceAssistant.State) {
+        val colorRes = when (state) {
+            VoiceAssistant.State.LISTENING, VoiceAssistant.State.THINKING -> R.color.pure_brand_tint
+            VoiceAssistant.State.IDLE, VoiceAssistant.State.SPEAKING -> R.color.kiosk_accent
+        }
+        (binding.voiceAssistantButton.background as? GradientDrawable)?.setColor(
+            ContextCompat.getColor(this, colorRes),
+        )
     }
 
     private fun onAdminGestureTriggered() {

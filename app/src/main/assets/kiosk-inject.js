@@ -164,6 +164,99 @@
         }
     }
 
+    // ---------- API для голосового помощника: window.__ds24Voice ----------
+    // Открывает "Заказать пропуск → На въезд" и заполняет поля. Вызывается
+    // из Android (VoiceAssistant.kt) через evaluateJavascript после того,
+    // как backend вернул структурированные данные из речи жителя.
+    //
+    // Важно: поля формы — React-контролируемые инпуты. Просто
+    // input.value = x React не увидит (его внутреннее состояние не
+    // обновится) — нужно ставить значение через нативный value-setter и
+    // диспатчить событие 'input', это стандартный приём для программного
+    // заполнения React-форм.
+    function setNativeValue(input, value) {
+        if (!input) return;
+        var proto = input.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+        var setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+        setter.call(input, value);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    function clickableFrom(el) {
+        if (!el) return null;
+        return el.closest('button,a,[role="button"]') || el;
+    }
+
+    // Ищет поле ввода рядом с текстовой подписью (например "Госномер*"),
+    // поднимаясь по родителям, т.к. label и input обычно лежат в одной
+    // общей обёртке чуть выше. text сравнивается по началу строки, чтобы
+    // не зависеть от "*" и прочих хвостов у подписи.
+    function findInputByLabelPrefix(prefix) {
+        var all = document.querySelectorAll('h1,h2,h3,h4,h5,span,div,p,label');
+        var label = null;
+        for (var i = 0; i < all.length; i++) {
+            var el = all[i];
+            if (el.children.length === 0 && el.textContent.trim().indexOf(prefix) === 0) {
+                label = el;
+                break;
+            }
+        }
+        if (!label) return null;
+        var scope = label.parentElement;
+        for (var j = 0; j < 3 && scope; j++) {
+            var input = scope.querySelector('input');
+            if (input) return input;
+            scope = scope.parentElement;
+        }
+        return null;
+    }
+
+    function fillCarPass(fields) {
+        fields = fields || {};
+        var orderBtn = closestRow(findLeafByText('Заказать пропуск'));
+        if (!orderBtn) return;
+        orderBtn.click();
+
+        setTimeout(function () {
+            var driveIn = clickableFrom(findLeafByText('На въезд'));
+            if (!driveIn) return;
+            driveIn.click();
+
+            setTimeout(function () {
+                if (fields.ownership === 'own') {
+                    // Свой транспорт — список сохранённых машин неоднозначен
+                    // (может быть несколько), выбор оставляем человеку.
+                    var ownTab = clickableFrom(findLeafByText('Мой'));
+                    if (ownTab) ownTab.click();
+                    return;
+                }
+                var guestTab = clickableFrom(findLeafByText('Гостевой'));
+                if (guestTab) guestTab.click();
+
+                setTimeout(function () {
+                    if (fields.plateNumber) {
+                        setNativeValue(findInputByLabelPrefix('Госномер'), fields.plateNumber);
+                    }
+                    if (fields.guestName) {
+                        setNativeValue(document.querySelector('input[placeholder="Имя и фамилия"]'), fields.guestName);
+                    }
+                    if (fields.carLabel) {
+                        setNativeValue(findInputByLabelPrefix('Название'), fields.carLabel);
+                    }
+                    // Дата визита намеренно не трогаем в этой версии — по
+                    // умолчанию форма и так подставляет сегодняшнюю дату,
+                    // а сам инпут даты, похоже, открывает календарь-виджет,
+                    // который безопаснее не автоматизировать вслепую.
+                }, 250);
+            }, 250);
+        }, 350);
+    }
+
+    window.__ds24Voice = {
+        fillCarPass: fillCarPass,
+    };
+
     function applyAll() {
         shrinkImages(findSectionByHeading('Актуальное'), 56);
         shrinkImages(findSectionByHeading('Услуги'), 92);
