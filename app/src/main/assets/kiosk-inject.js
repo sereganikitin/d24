@@ -205,7 +205,7 @@
         if (!label) return null;
         var scope = label.parentElement;
         for (var j = 0; j < 3 && scope; j++) {
-            var input = scope.querySelector('input');
+            var input = scope.querySelector('input, textarea');
             if (input) return input;
             scope = scope.parentElement;
         }
@@ -243,6 +243,17 @@
                     }
                     if (fields.carLabel) {
                         setNativeValue(findInputByLabelPrefix('Название'), fields.carLabel);
+                    }
+                    // В форме нет отдельного поля "номер машиноместа" —
+                    // по договорённости с заказчиком (2026-09-04) кладём
+                    // это в общее поле "Комментарий". Точное название
+                    // поля не подтверждено скриншотом (best-effort по
+                    // распространённой подписи) — если не найдётся, эта
+                    // строка просто ничего не сделает, остальное
+                    // заполнение не пострадает.
+                    if (fields.parkingSpotNumber) {
+                        var comment = findInputByLabelPrefix('Коммент');
+                        if (comment) setNativeValue(comment, 'Машиноместо ' + fields.parkingSpotNumber);
                     }
                     // Дата визита намеренно не трогаем в этой версии — по
                     // умолчанию форма и так подставляет сегодняшнюю дату,
