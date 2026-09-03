@@ -19,6 +19,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import ru.uk.ds24kiosk.databinding.ActivityMainBinding
 import ru.uk.ds24kiosk.webview.AndroidBridge
+import ru.uk.ds24kiosk.webview.KioskStyleInjector
 import ru.uk.ds24kiosk.webview.KioskWebChromeClient
 import ru.uk.ds24kiosk.webview.KioskWebViewClient
 
@@ -103,6 +104,7 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
     override fun onPageLoaded(webView: WebView, url: String?) {
         hideOfflineOverlay()
         detectLoginScreen(webView)
+        KioskStyleInjector.inject(this, webView)
     }
 
     private fun showOfflineOverlay() {
