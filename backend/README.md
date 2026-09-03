@@ -11,6 +11,14 @@
 `src/prompt.js` и `src/providers/*.js` от хостинга не зависят, так что
 при желании то же самое можно снова завернуть в Worker.
 
+**Провайдер по умолчанию — YandexGPT, не Gemini.** У Gemini России нет
+в списке доступных регионов API
+([ai.google.dev/gemini-api/docs/available-regions](https://ai.google.dev/gemini-api/docs/available-regions)),
+а у Claude — судя по всему, аналогичная история. Backend физически стоит
+в России, так что запросы к ним бы просто отклонялись независимо от
+того, где выпущен ключ. YandexGPT — российский провайдер без таких
+ограничений.
+
 ## Деплой (на сервере 72.56.12.105)
 
 Домен: **d24-voice.infoseledka.ru** — DNS управляется через Timeweb, A-запись
@@ -25,14 +33,15 @@ cd d24-voice-assist/backend
 npm install --omit=dev
 
 cp .env.example .env
-nano .env                 # вписать реальный GEMINI_API_KEY
+nano .env                 # вписать реальные YANDEX_API_KEY и YANDEX_FOLDER_ID
 
 pm2 start ecosystem.config.cjs
 pm2 save                  # чтобы пережило перезагрузку (pm2-root.service уже настроен)
 ```
 
-Ключ Gemini — в [Google AI Studio](https://aistudio.google.com/apikey),
-бесплатно в рамках free tier.
+Ключ и folder id — в [Yandex AI Studio](https://aistudio.yandex.ru/):
+создать API-ключ (Api-Key, не IAM-токен — не истекает за пару часов),
+folder id скопировать наводкой на имя папки вверху экрана консоли.
 
 nginx-конфиг (`/etc/nginx/sites-available/d24-voice.infoseledka.ru`,
 по образцу соседних сайтов на этом сервере — сначала plain HTTP, затем
@@ -113,14 +122,18 @@ pm2 restart d24-voice-assist
 
 `GET /health` — простой healthcheck (`{"ok":true}`), без вызова LLM.
 
-## Смена провайдера на Claude (когда согласует руководство)
+## Смена провайдера на Claude/Gemini (если решат обходить региональные ограничения)
 
-1. В `.env` на сервере добавить `ANTHROPIC_API_KEY=...`.
-2. Реализовать сам вызов Anthropic Messages API в
+1. В `.env` на сервере добавить `ANTHROPIC_API_KEY=...` (или `GEMINI_API_KEY=...`).
+2. Для Claude — реализовать сам вызов Anthropic Messages API в
    `src/providers/claude.js` (контракт ответа уже описан в
-   `src/prompt.js`, переиспользуется без изменений).
-3. В `.env` поменять `LLM_PROVIDER=gemini` на `LLM_PROVIDER=claude`,
-   `pm2 restart d24-voice-assist`.
+   `src/prompt.js`, переиспользуется без изменений); Gemini уже
+   реализован в `src/providers/gemini.js`.
+3. Учесть, что и Gemini, и, вероятно, Claude недоступны для запросов из
+   России напрямую (см. выше) — понадобится либо релей за пределами
+   России, либо VPN на сервере для исходящих запросов к конкретно этому
+   API. Само переключение — `LLM_PROVIDER=claude` (или `gemini`) в
+   `.env`, `pm2 restart d24-voice-assist`.
 
 Android-приложение и `kiosk-inject.js` не меняются вообще — они знают
 только про `POST /assist` и формат ответа.
@@ -130,7 +143,7 @@ Android-приложение и `kiosk-inject.js` не меняются вооб
 ```bash
 cd backend
 npm install
-cp .env.example .env   # и вписать GEMINI_API_KEY
+cp .env.example .env   # и вписать YANDEX_API_KEY / YANDEX_FOLDER_ID
 node --env-file=.env src/server.js
 curl -X POST http://localhost:3011/assist \
   -H "content-type: application/json" \

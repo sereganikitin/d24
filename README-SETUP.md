@@ -31,15 +31,18 @@ kiosk-режиме, не даёт экрану гаснуть и не даёт �
 
 "Мозги" — backend-прокси на `/backend` в этом репозитории (Node/Express,
 задеплоен на 72.56.12.105, `d24-voice.infoseledka.ru`; не Cloudflare —
-у него бывают перебои с доступностью в России без VPN). Сейчас
-провайдер — Gemini, с возможностью переключиться на Claude, когда
-согласует руководство (детали — `backend/README.md`).
+у него бывают перебои с доступностью в России без VPN). Провайдер —
+**YandexGPT**, не Gemini/Claude: у обоих Россия не входит в список
+доступных регионов API, а backend физически стоит в России — запросы
+отклонялись бы независимо от того, где выпущен ключ (детали и как
+сменить провайдера позже — `backend/README.md`).
 
 Чтобы помощник заработал, нужны ещё два шага снаружи этого репозитория:
 1. В панели Timeweb добавить DNS A-запись `d24-voice.infoseledka.ru → 72.56.12.105`.
-2. Вписать реальный `GEMINI_API_KEY` в `/var/www/d24-voice-assist/backend/.env` на сервере
-   (ключ — бесплатно в [Google AI Studio](https://aistudio.google.com/apikey)),
-   затем `pm2 restart d24-voice-assist`.
+2. Вписать реальные `YANDEX_API_KEY` и `YANDEX_FOLDER_ID` в
+   `/var/www/d24-voice-assist/backend/.env` на сервере (получаются в
+   [Yandex AI Studio](https://aistudio.yandex.ru/)), затем
+   `pm2 restart d24-voice-assist`.
 
 Первая версия понимает только один сценарий — гостевой пропуск на
 машину (На въезд → Гостевой). Пешеходные пропуска, заявки, показания

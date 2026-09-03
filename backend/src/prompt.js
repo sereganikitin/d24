@@ -51,6 +51,7 @@ export function buildSystemPrompt() {
     ].join('\n');
 }
 
+// Формат Gemini (contents[].parts[].text, role model|user).
 export function buildContents(transcript, history) {
     const contents = [];
     for (const turn of history || []) {
@@ -62,4 +63,19 @@ export function buildContents(transcript, history) {
     }
     contents.push({ role: 'user', parts: [{ text: transcript }] });
     return contents;
+}
+
+// Формат OpenAI-совместимых API (YandexGPT, и Claude тоже может через
+// свой Messages API переиспользовать эту же форму role/content).
+export function buildOpenAiMessages(transcript, history) {
+    const messages = [];
+    for (const turn of history || []) {
+        if (!turn || !turn.text) continue;
+        messages.push({
+            role: turn.role === 'assistant' ? 'assistant' : 'user',
+            content: String(turn.text),
+        });
+    }
+    messages.push({ role: 'user', content: transcript });
+    return messages;
 }

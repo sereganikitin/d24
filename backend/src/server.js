@@ -1,6 +1,7 @@
 import express from 'express';
 import { callGemini } from './providers/gemini.js';
 import { callClaude } from './providers/claude.js';
+import { callYandexGpt } from './providers/yandexgpt.js';
 
 /**
  * Прокси между киоском и LLM: держит API-ключ на своей стороне (в
@@ -13,7 +14,17 @@ import { callClaude } from './providers/claude.js';
  * перебои с доступностью в России без VPN — переехал на свой сервер
  * (обычный Node/Express за nginx, как соседние сервисы на этой же
  * машине). providers/*.js и prompt.js от хостинга не зависят.
+ *
+ * Провайдер по умолчанию — YandexGPT, не Gemini: у Gemini (и, судя по
+ * всему, у Claude) нет России в списке доступных регионов API, а этот
+ * backend физически стоит в России — запросы бы просто отклонялись.
  */
+const PROVIDERS = {
+    yandexgpt: callYandexGpt,
+    gemini: callGemini,
+    claude: callClaude,
+};
+
 const app = express();
 app.use(express.json());
 
@@ -24,13 +35,12 @@ app.post('/assist', async (req, res) => {
     }
     const history = Array.isArray(req.body && req.body.history) ? req.body.history : [];
 
-    const provider = String(process.env.LLM_PROVIDER || 'gemini').toLowerCase();
+    const providerName = String(process.env.LLM_PROVIDER || 'yandexgpt').toLowerCase();
+    const call = PROVIDERS[providerName] || callYandexGpt;
     const env = process.env;
 
     try {
-        const result = provider === 'claude'
-            ? await callClaude({ transcript, history, env })
-            : await callGemini({ transcript, history, env });
+        const result = await call({ transcript, history, env });
         res.json(result);
     } catch (err) {
         console.error('assist error:', err);
