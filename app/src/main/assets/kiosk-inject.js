@@ -1,7 +1,7 @@
 /*
  * Правки раскладки/оформления поверх lk.purehome.ru под фирменный стиль
  * Pure (белый / тёплый чёрный / кофейно-коричневый) и под киоск (главный
- * экран без прокрутки).
+ * экран без прокрутки, скрытые лишние опции в формах и т.п.).
  *
  * Не завязано на "css-XXXXXXX" классы MUI/emotion (они генерируются
  * заново при каждой пересборке сайта вендором) — ищем элементы по
@@ -10,8 +10,16 @@
  * молча при любом редизайне сайта — если текст не нашёлся, блок просто
  * ничего не делает.
  *
+ * Модалки (например "Заказать пропуск") дорисовываются в DOM уже после
+ * первой загрузки страницы, без полной перезагрузки — поэтому все
+ * правки применяются не только один раз при старте, но и повторно при
+ * любом изменении DOM (MutationObserver ниже). Это же понадобится
+ * дальше для голосового помощника, который будет открывать эти модалки
+ * и заполнять поля.
+ *
  * Правьте прямо этот файл — пересборка Kotlin не нужна, только
- * пересборка через Codemagic/GitHub Actions.
+ * пересборка через Codemagic/GitHub Actions (а после того, как правки
+ * стали подгружаться с GitHub на лету — вообще без пересборки).
  */
 (function () {
     var PURE = {
@@ -136,12 +144,51 @@
         leaf.style.setProperty('color', PURE.ink, 'important');
     }
 
-    try {
+    // ---------- Модалка "Заказать пропуск" → "На въезд" ----------
+    // На форме есть переключатель "Срок действия": Одноразовый / Постоянный.
+    // Постоянного пропуска на авто по факту быть не должно — прячем кнопку,
+    // но только когда рядом реально нашёлся её парный переключатель
+    // "Одноразовый" (чтобы случайно не спрятать какой-то другой,
+    // не связанный с пропуском элемент с тем же словом "Постоянный").
+    function hidePermanentPassOption() {
+        var permanent = findLeafByText('Постоянный');
+        if (!permanent) return;
+        var toggle = permanent.closest('button') || permanent;
+        var container = toggle.parentElement;
+        if (!container) return;
+        var hasOneTimeSibling = Array.prototype.some.call(container.children, function (child) {
+            return child.textContent && child.textContent.trim() === 'Одноразовый';
+        });
+        if (hasOneTimeSibling) {
+            toggle.style.setProperty('display', 'none', 'important');
+        }
+    }
+
+    function applyAll() {
         shrinkImages(findSectionByHeading('Актуальное'), 56);
         shrinkImages(findSectionByHeading('Услуги'), 92);
         restyleQuickActions();
         restyleStatusCard();
-    } catch (e) {
-        // не мешаем странице работать, даже если что-то из структуры не совпало
+        hidePermanentPassOption();
     }
+
+    function safeApplyAll() {
+        try {
+            applyAll();
+        } catch (e) {
+            // не мешаем странице работать, даже если что-то из структуры не совпало
+        }
+    }
+
+    safeApplyAll();
+
+    // Модалки (например "Заказать пропуск") дорисовываются в DOM позже,
+    // без перезагрузки страницы — переприменяем правила при изменениях
+    // DOM, с небольшим дебаунсом, чтобы не грузить страницу на каждый чих.
+    var debounceTimer = null;
+    var observer = new MutationObserver(function () {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(safeApplyAll, 150);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
 })();
