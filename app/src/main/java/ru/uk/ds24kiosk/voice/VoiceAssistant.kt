@@ -125,6 +125,53 @@ class VoiceAssistant(
         return "$timeOfDay! Я голосовой ассистент Пьюр Хоум Комфорт. Как я могу к вам обращаться?"
     }
 
+    /**
+     * Создаёт и привязывает SpeechRecognizer заранее, ПОКА ещё идёт
+     * озвучка вопроса — привязка к системному сервису распознавания не
+     * мгновенная, и если делать это только после того, как ассистент
+     * замолчал, получается заметная пауза: житель уже отвечает, а
+     * микрофон ещё не готов слушать, и приходится повторять. Вызывается
+     * из speak() параллельно с проигрыванием звука, чтобы к моменту его
+     * окончания распознаватель был уже готов и beginRecognition() только
+     * стартовал прослушивание, а не создавал его с нуля.
+     */
+    private fun prepareRecognizer() {
+        if (!SpeechRecognizer.isRecognitionAvailable(context)) return
+        recognizer?.destroy()
+        val r = SpeechRecognizer.createSpeechRecognizer(context)
+        recognizer = r
+        r.setRecognitionListener(buildRecognitionListener())
+    }
+
+    private fun buildRecognitionListener(): RecognitionListener = object : RecognitionListener {
+        override fun onReadyForSpeech(params: Bundle?) {}
+        override fun onBeginningOfSpeech() {}
+        override fun onRmsChanged(rmsdB: Float) {}
+        override fun onBufferReceived(buffer: ByteArray?) {}
+        override fun onEndOfSpeech() {
+            setState(State.THINKING)
+        }
+
+        override fun onError(error: Int) {
+            setState(State.IDLE)
+            listener.onError("Не расслышал, попробуйте ещё раз")
+        }
+
+        override fun onResults(results: Bundle?) {
+            val text = results
+                ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                ?.firstOrNull()
+            if (text.isNullOrBlank()) {
+                setState(State.IDLE)
+                return
+            }
+            sendTranscript(text)
+        }
+
+        override fun onPartialResults(partialResults: Bundle?) {}
+        override fun onEvent(eventType: Int, params: Bundle?) {}
+    }
+
     private fun beginRecognition() {
         if (!SpeechRecognizer.isRecognitionAvailable(context)) {
             val fallbackIntent = buildRecognitionIntent()
@@ -136,38 +183,14 @@ class VoiceAssistant(
             }
             return
         }
-        recognizer?.destroy()
-        val r = SpeechRecognizer.createSpeechRecognizer(context)
-        recognizer = r
-        r.setRecognitionListener(object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) {}
-            override fun onBeginningOfSpeech() {}
-            override fun onRmsChanged(rmsdB: Float) {}
-            override fun onBufferReceived(buffer: ByteArray?) {}
-            override fun onEndOfSpeech() {
-                setState(State.THINKING)
-            }
-
-            override fun onError(error: Int) {
-                setState(State.IDLE)
-                listener.onError("Не расслышал, попробуйте ещё раз")
-            }
-
-            override fun onResults(results: Bundle?) {
-                val text = results
-                    ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                    ?.firstOrNull()
-                if (text.isNullOrBlank()) {
-                    setState(State.IDLE)
-                    return
-                }
-                sendTranscript(text)
-            }
-
-            override fun onPartialResults(partialResults: Bundle?) {}
-            override fun onEvent(eventType: Int, params: Bundle?) {}
-        })
-
+        // Обычно уже создан и привязан заранее в prepareRecognizer() —
+        // сюда попадаем сразу после того, как замолчал TTS, без задержки
+        // на создание/привязку. Пересоздаём только если почему-то не
+        // подготовили заранее (подстраховка, не основной путь).
+        val r = recognizer ?: SpeechRecognizer.createSpeechRecognizer(context).also {
+            it.setRecognitionListener(buildRecognitionListener())
+            recognizer = it
+        }
         setState(State.LISTENING)
         r.startListening(buildRecognitionIntent())
     }
@@ -303,6 +326,12 @@ class VoiceAssistant(
      */
     private fun speak(text: String, utteranceId: String) {
         setState(State.SPEAKING)
+        if (utteranceId == UTTERANCE_GREETING || utteranceId == UTTERANCE_ASK) {
+            // После этой фразы мы точно снова начнём слушать — готовим
+            // распознаватель прямо сейчас, параллельно с озвучкой,
+            // чтобы к её концу не было паузы на инициализацию.
+            prepareRecognizer()
+        }
         Thread {
             val audioFile = try {
                 fetchTtsAudio(text)
