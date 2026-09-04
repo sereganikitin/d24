@@ -58,8 +58,15 @@ app.post('/assist', async (req, res) => {
         const result = await call({ transcript, history, knownFields, env });
         res.json(result);
     } catch (err) {
+        // Полный текст ошибки (может содержать внутренние id облака/папки
+        // и т.п.) — только в лог. Житель может услышать это в озвучке
+        // ("message" из ответа читает вслух TTS) — сырую техническую
+        // ошибку туда пускать нельзя, только дружелюбный текст.
         console.error('assist error:', err);
-        res.status(502).json({ type: 'error', message: String((err && err.message) || err) });
+        res.status(502).json({
+            type: 'error',
+            message: 'Извините, сейчас не получается связаться с сервисом. Попробуйте, пожалуйста, ещё раз через минуту.',
+        });
     }
 });
 
