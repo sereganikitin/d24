@@ -264,8 +264,38 @@
         }, 350);
     }
 
+    // Пропуск "На вход" (пешеход, без машины) — по аналогии с fillCarPass,
+    // но точная DOM-структура этого экрана не подтверждена скриншотом
+    // (best-effort, 2026-09-05): предполагаем, что там тоже есть поле
+    // "Имя и фамилия" гостя и общее поле "Комментарий", как на форме
+    // машины. Если что-то не найдётся — просто ничего не сделает,
+    // остальное заполнение не пострадает; поправить легко, без пересборки.
+    function fillWalkinPass(fields) {
+        fields = fields || {};
+        var orderBtn = closestRow(findLeafByText('Заказать пропуск'));
+        if (!orderBtn) return;
+        orderBtn.click();
+
+        setTimeout(function () {
+            var walkIn = clickableFrom(findLeafByText('На вход'));
+            if (!walkIn) return;
+            walkIn.click();
+
+            setTimeout(function () {
+                if (fields.guestName) {
+                    setNativeValue(document.querySelector('input[placeholder="Имя и фамилия"]'), fields.guestName);
+                }
+                if (fields.destinationApartment) {
+                    var comment = findInputByLabelPrefix('Коммент');
+                    if (comment) setNativeValue(comment, 'Апартамент ' + fields.destinationApartment);
+                }
+            }, 250);
+        }, 350);
+    }
+
     window.__ds24Voice = {
         fillCarPass: fillCarPass,
+        fillWalkinPass: fillWalkinPass,
     };
 
     function applyAll() {

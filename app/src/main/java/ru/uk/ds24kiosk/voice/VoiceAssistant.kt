@@ -198,6 +198,14 @@ class VoiceAssistant(
         Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU")
+            // По умолчанию распознаватель обрывает запись при паузе
+            // ~1 сек — этого мало, когда диктуют длинный госномер по
+            // буквам/цифрам с естественными паузами между группами
+            // (реальный случай: обрезало номер машины на середине).
+            // Даём больше времени на паузы и на саму фразу.
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 3000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 3000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 15000L)
         }
 
     /** Результат системного экрана распознавания — см. onNeedExternalRecognition. */
@@ -274,7 +282,8 @@ class VoiceAssistant(
             "fill" -> {
                 val say = response.optNullableString("say", "Готово, проверьте форму")
                 val fields = response.optJSONObject("fields") ?: JSONObject()
-                fillForm(fields)
+                val action = response.optString("action")
+                fillForm(action, fields)
                 endSession()
                 speak(say, UTTERANCE_FINAL)
             }
@@ -308,9 +317,10 @@ class VoiceAssistant(
     private fun JSONObject.optNullableString(key: String, default: String): String =
         if (isNull(key)) default else optString(key, default)
 
-    private fun fillForm(fields: JSONObject) {
+    private fun fillForm(action: String, fields: JSONObject) {
+        val jsFunction = if (action == "order_walkin_pass") "fillWalkinPass" else "fillCarPass"
         webView.evaluateJavascript(
-            "window.__ds24Voice && window.__ds24Voice.fillCarPass($fields);",
+            "window.__ds24Voice && window.__ds24Voice.$jsFunction($fields);",
             null,
         )
     }

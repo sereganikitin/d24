@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Обычная (не адаптивная) векторная иконка для API 21-25 — на API 26+
+  всё равно используется mipmap-anydpi-v26/ic_launcher.xml (adaptive-icon,
+  более специфичный квалификатор побеждает). Без этого файла minSdk
+  ниже 26 не собирался бы — системе не из чего было бы взять значок на
+  старых версиях. Фон и домик — те же фигуры, что и в адаптивной версии
+  (drawable/ic_launcher_background.xml, ic_launcher_foreground.xml),
+  просто без масштабирования под safe zone адаптивных иконок.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#0B1220"
+        android:pathData="M0,0 h108 v108 h-108 z" />
+    <path
+        android:fillColor="#3D7BF7"
+        android:pathData="M54,24 L84,50 L78,50 L78,84 L60,84 L60,64 L48,64 L48,84 L30,84 L30,50 L24,50 Z" />
+</vector>
