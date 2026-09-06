@@ -113,15 +113,10 @@ app.post('/assist', async (req, res) => {
     }
 });
 
-app.post('/tts', async (req, res) => {
-    const text = String((req.body && req.body.text) || '').trim();
+async function handleTtsRequest(text, voice, res) {
     if (!text) {
         return res.status(400).json({ error: 'text is required' });
     }
-    // voice — необязательный параметр, только для ручного сравнения
-    // голосов через curl (см. backend/README.md); Android-приложение его
-    // не передаёт и всегда получает голос из YANDEX_TTS_VOICE на сервере.
-    const voice = req.body && req.body.voice ? String(req.body.voice).trim() : undefined;
     try {
         const audio = await synthesizeSpeech({ text, env: process.env, voice });
         res.set('content-type', 'audio/ogg');
@@ -130,6 +125,25 @@ app.post('/tts', async (req, res) => {
         console.error('tts error:', err);
         res.status(502).json({ error: String((err && err.message) || err) });
     }
+}
+
+app.post('/tts', async (req, res) => {
+    const text = String((req.body && req.body.text) || '').trim();
+    // voice — необязательный параметр, только для ручного сравнения
+    // голосов через curl (см. backend/README.md); Android-приложение его
+    // не передаёт и всегда получает голос из YANDEX_TTS_VOICE на сервере.
+    const voice = req.body && req.body.voice ? String(req.body.voice).trim() : undefined;
+    await handleTtsRequest(text, voice, res);
+});
+
+// GET-вариант того же самого — только для ручного прослушивания через
+// адресную строку браузера (PowerShell+curl на Windows слишком легко
+// портит кириллицу в JSON-теле, см. историю проверки голоса). Android
+// им не пользуется.
+app.get('/tts', async (req, res) => {
+    const text = String((req.query && req.query.text) || '').trim();
+    const voice = req.query && req.query.voice ? String(req.query.voice).trim() : undefined;
+    await handleTtsRequest(text, voice, res);
 });
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
