@@ -73,8 +73,18 @@ app.post('/assist', async (req, res) => {
         // берём из отдельного поиска (см. yandex-search.js) и уже его
         // отдаём как обычный "info". Если поиск не удался — честно
         // говорим об этом, а не молчим и не читаем пустоту.
-        if (result && result.type === 'search' && result.query) {
+        //
+        // ВАЖНО (2026-09-06, живой баг): раньше в это условие входило
+        // "&& result.query" — если модель вернула type:"search", но
+        // забыла (или не смогла) сформулировать query, сырой объект с
+        // type:"search" улетал клиенту как есть. Android не знает такого
+        // type, попадает в свой else-фолбэк ("Что-то пошло не так") и
+        // затихает — воспроизведено на реальном вопросе про кофе.
+        // Теперь ЛЮБОЙ type:"search" перехватывается здесь; отсутствие
+        // query просто считается неудачным поиском.
+        if (result && result.type === 'search') {
             try {
+                if (!result.query) throw new Error('model returned type:"search" without a query');
                 const answer = await searchAndSummarize({ query: result.query, env });
                 return res.json({
                     type: 'info',
@@ -97,6 +107,25 @@ app.post('/assist', async (req, res) => {
                     message: 'Не получилось найти ответ на этот вопрос. Могу помочь с пропуском или подсказать про заведения в комплексе.',
                 });
             }
+        }
+
+        // Последний рубеж: что бы ни случилось выше по цепочке, наружу
+        // должен уйти только один из типов, которые реально понимает
+        // Android-клиент. Если модель (несмотря на строгую json-схему)
+        // всё же вернула что-то другое — не отдаём это клиенту как есть,
+        // а превращаем в обычную дружелюбную ошибку.
+        const KNOWN_CLIENT_TYPES = ['ask', 'fill', 'error', 'info'];
+        if (!result || !KNOWN_CLIENT_TYPES.includes(result.type)) {
+            console.error('assist: unexpected response shape from model:', JSON.stringify(result));
+            return res.json({
+                type: 'error',
+                question: null,
+                say: null,
+                query: null,
+                action: null,
+                fields: (result && result.fields) || {},
+                message: 'Не получилось разобрать запрос. Попробуйте, пожалуйста, ещё раз.',
+            });
         }
 
         res.json(result);
