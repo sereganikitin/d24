@@ -3,6 +3,7 @@ import { callGemini } from './providers/gemini.js';
 import { callClaude } from './providers/claude.js';
 import { callYandexGpt } from './providers/yandexgpt.js';
 import { synthesizeSpeech } from './providers/yandex-tts.js';
+import { searchAndSummarize } from './providers/yandex-search.js';
 import { classifyPassTypeByKeywords } from './prompt.js';
 
 /**
@@ -20,6 +21,12 @@ import { classifyPassTypeByKeywords } from './prompt.js';
  * Провайдер по умолчанию — YandexGPT, не Gemini: у Gemini (и, судя по
  * всему, у Claude) нет России в списке доступных регионов API, а этот
  * backend физически стоит в России — запросы бы просто отклонялись.
+ *
+ * 2026-09-06: для "разумных общих вопросов" не по теме ЖК (погода,
+ * маршруты, факты) главная модель не пытается ответить сама — просит
+ * поиск (type:"search") через yandex-search.js, и уже его результат
+ * отдаётся приложению как обычный "info". Наружу тип "search" никогда
+ * не уходит — Android-стороне про него знать не нужно.
  */
 const PROVIDERS = {
     yandexgpt: callYandexGpt,
@@ -56,6 +63,38 @@ app.post('/assist', async (req, res) => {
 
     try {
         const result = await call({ transcript, history, knownFields, env });
+
+        // "search" — промежуточный шаг, наружу (в приложение) никогда не
+        // уходит: модель только формулирует запрос, а реальный ответ
+        // берём из отдельного поиска (см. yandex-search.js) и уже его
+        // отдаём как обычный "info". Если поиск не удался — честно
+        // говорим об этом, а не молчим и не читаем пустоту.
+        if (result && result.type === 'search' && result.query) {
+            try {
+                const answer = await searchAndSummarize({ query: result.query, env });
+                return res.json({
+                    type: 'info',
+                    question: null,
+                    say: answer,
+                    query: null,
+                    action: null,
+                    fields: result.fields || {},
+                    message: answer,
+                });
+            } catch (searchErr) {
+                console.error('search error:', searchErr);
+                return res.json({
+                    type: 'error',
+                    question: null,
+                    say: null,
+                    query: null,
+                    action: null,
+                    fields: result.fields || {},
+                    message: 'Не получилось найти ответ на этот вопрос. Могу помочь с пропуском или подсказать про заведения в комплексе.',
+                });
+            }
+        }
+
         res.json(result);
     } catch (err) {
         // Полный текст ошибки (может содержать внутренние id облака/папки
