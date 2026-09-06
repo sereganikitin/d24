@@ -4,7 +4,7 @@ import { callClaude } from './providers/claude.js';
 import { callYandexGpt } from './providers/yandexgpt.js';
 import { synthesizeSpeech } from './providers/yandex-tts.js';
 import { searchAndSummarize } from './providers/yandex-search.js';
-import { classifyPassTypeByKeywords } from './prompt.js';
+import { classifyPassTypeByKeywords, classifyRequestKindByKeywords } from './prompt.js';
 
 /**
  * Прокси между киоском и LLM: держит API-ключ на своей стороне (в
@@ -52,6 +52,10 @@ app.post('/assist', async (req, res) => {
     const knownFields = (req.body && req.body.knownFields && typeof req.body.knownFields === 'object')
         ? { ...req.body.knownFields }
         : {};
+    if (!knownFields.requestKind) {
+        const guessedKind = classifyRequestKindByKeywords(transcript);
+        if (guessedKind) knownFields.requestKind = guessedKind;
+    }
     if (!knownFields.passType) {
         const guessed = classifyPassTypeByKeywords(transcript);
         if (guessed) knownFields.passType = guessed;

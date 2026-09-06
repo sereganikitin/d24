@@ -325,7 +325,11 @@ class VoiceAssistant(
         if (isNull(key)) default else optString(key, default)
 
     private fun fillForm(action: String, fields: JSONObject) {
-        val jsFunction = if (action == "order_walkin_pass") "fillWalkinPass" else "fillCarPass"
+        val jsFunction = when (action) {
+            "order_walkin_pass" -> "fillWalkinPass"
+            "order_service_trash_removal" -> "fillServiceTrashRemoval"
+            else -> "fillCarPass"
+        }
         webView.evaluateJavascript(
             "window.__ds24Voice && window.__ds24Voice.$jsFunction($fields);",
             null,
