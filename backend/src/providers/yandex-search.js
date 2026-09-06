@@ -22,6 +22,7 @@ function stripMarkdownForSpeech(text) {
         .replace(/\[\d+\]/g, '')
         .replace(/\*\*(.+?)\*\*/g, '$1')
         .replace(/\*(.+?)\*/g, '$1')
+        .replace(/^[ \t]*[*-][ \t]+/gm, '')
         .replace(/[ \t]+/g, ' ')
         .replace(/ *\n */g, '\n')
         .trim();
