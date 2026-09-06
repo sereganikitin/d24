@@ -292,6 +292,13 @@ class VoiceAssistant(
                 endSession()
                 speak(message, UTTERANCE_FINAL)
             }
+            "info" -> {
+                // Справочный ответ (где кофе/аптека и т.п.) — не часть
+                // сценария пропуска, просто озвучиваем и завершаем.
+                val say = response.optNullableString("say", "")
+                endSession()
+                speak(say, UTTERANCE_FINAL)
+            }
             else -> {
                 endSession()
                 speak("Что-то пошло не так, попробуйте ещё раз", UTTERANCE_FINAL)
