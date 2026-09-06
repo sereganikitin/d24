@@ -39,6 +39,14 @@ export async function searchAndSummarize({ query, env }) {
         throw new Error('Search API could not find a reliable answer');
     }
     const answer = data && data.message && data.message.content;
-    if (!answer) throw new Error('Yandex Search API returned no answer');
+    if (!answer) {
+        // Временный диагностический лог (2026-09-06): реальная форма
+        // ответа v2/gen/search не совпала с документацией с первой
+        // попытки — логируем сырой JSON, чтобы понять настоящую
+        // структуру, а не гадать. Убрать после того, как парсинг будет
+        // подтверждён на практике.
+        console.error('Yandex Search API: no message.content, raw response:', JSON.stringify(data));
+        throw new Error('Yandex Search API returned no answer');
+    }
     return answer;
 }
