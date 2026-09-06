@@ -118,8 +118,12 @@ app.post('/tts', async (req, res) => {
     if (!text) {
         return res.status(400).json({ error: 'text is required' });
     }
+    // voice — необязательный параметр, только для ручного сравнения
+    // голосов через curl (см. backend/README.md); Android-приложение его
+    // не передаёт и всегда получает голос из YANDEX_TTS_VOICE на сервере.
+    const voice = req.body && req.body.voice ? String(req.body.voice).trim() : undefined;
     try {
-        const audio = await synthesizeSpeech({ text, env: process.env });
+        const audio = await synthesizeSpeech({ text, env: process.env, voice });
         res.set('content-type', 'audio/ogg');
         res.send(audio);
     } catch (err) {

@@ -12,13 +12,13 @@ const DEFAULT_VOICE = 'jane';
  * их через MediaPlayer, с откатом на локальный TTS, если этот запрос
  * не удался (сеть, сервис недоступен и т.п.).
  */
-export async function synthesizeSpeech({ text, env }) {
+export async function synthesizeSpeech({ text, env, voice: voiceOverride }) {
     const apiKey = env.YANDEX_API_KEY;
     const folderId = env.YANDEX_FOLDER_ID;
     if (!apiKey || !folderId) {
         throw new Error('YANDEX_API_KEY / YANDEX_FOLDER_ID is not configured');
     }
-    const voice = env.YANDEX_TTS_VOICE || DEFAULT_VOICE;
+    const voice = voiceOverride || env.YANDEX_TTS_VOICE || DEFAULT_VOICE;
 
     const params = new URLSearchParams({
         text,
