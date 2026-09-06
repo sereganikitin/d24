@@ -223,6 +223,8 @@ export function buildSystemPrompt(knownFields) {
     // случайно "запомнится" как факт. Поэтому отдельно и явно
     // запрещаем угадывать значение именно того поля, про которое сейчас
     // спрашиваем.
+    const actionRule = 'Поле action на верхнем уровне ответа — ТОЛЬКО для type:"fill", и только одно из order_car_pass/order_walkin_pass/order_service_trash_removal. Для любого другого type (ask/error/info/search) action всегда null — не подставляй туда ничего "на всякий случай" или "чтобы было похоже на правду", даже если разговор явно про пропуск или про вывоз мусора. Это отдельное правило от null-полей внутри fields.';
+
     const noGuessingRule = 'Если ты сейчас именно СПРАШИВАЕШЬ про какое-то поле (например про requestKind, когда неясно, что нужно жителю, про passType, когда неясно "машина или человек", или про guestName/plateNumber/parkingSpotNumber/destinationApartment/serviceCategory/serviceDescription) — в fields для ЭТОГО КОНКРЕТНОГО поля обязательно верни null, а не свою догадку. Житель ещё не ответил на этот вопрос, значит и записывать в это поле пока нечего. Это отдельное правило от "уже подтверждено" выше — оно как раз про поля, которые ЕЩЁ НЕ подтверждены.';
 
     return [
@@ -232,6 +234,8 @@ export function buildSystemPrompt(knownFields) {
         knownBlock,
         '',
         noGuessingRule,
+        '',
+        actionRule,
         '',
         // Без этого блока и примеров ниже YandexGPT в проверке (2026-09-03)
         // стабильно ПРИДУМЫВАЛ госномер и имя гостя вместо того, чтобы
