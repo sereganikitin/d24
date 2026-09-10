@@ -4,6 +4,7 @@ import { callClaude } from './providers/claude.js';
 import { callYandexGpt } from './providers/yandexgpt.js';
 import { synthesizeSpeech } from './providers/yandex-tts.js';
 import { searchAndSummarize } from './providers/yandex-search.js';
+import { searchVkusVillProducts, getVkusVillDiscounts } from './providers/vkusvill-mcp.js';
 import { classifyPassTypeByKeywords, classifyRequestKindByKeywords } from './prompt.js';
 
 /**
@@ -27,6 +28,12 @@ import { classifyPassTypeByKeywords, classifyRequestKindByKeywords } from './pro
  * поиск (type:"search") через yandex-search.js, и уже его результат
  * отдаётся приложению как обычный "info". Наружу тип "search" никогда
  * не уходит — Android-стороне про него знать не нужно.
+ *
+ * 2026-09-10: тот же приём для vv_search/vv_discounts — вопросы про
+ * конкретные товары/акции настоящего ВкусВилла в доме, через его
+ * публичный MCP-сервер (vkusvill-mcp.js). Только чтение каталога, без
+ * реальных заказов — финальную корзину/покупку житель всё равно делает
+ * сам через сайт/приложение ВкусВилла.
  */
 const PROVIDERS = {
     yandexgpt: callYandexGpt,
@@ -65,48 +72,60 @@ app.post('/assist', async (req, res) => {
     const call = PROVIDERS[providerName] || callYandexGpt;
     const env = process.env;
 
+    // Общий шаблон для "промежуточных" типов (search/vv_search/vv_discounts):
+    // модель только просит что-то найти, наружу в приложение эти типы
+    // никогда не уходят — реальный ответ берётся отдельным вызовом и
+    // отдаётся как обычный "info"/"error". См. подробное объяснение
+    // бага 2026-09-06 в git-истории: раньше пустой query в type:"search"
+    // приводил к тому, что сырой объект улетал клиенту как есть, а
+    // Android не знал такого типа и молчал после "Что-то пошло не так".
+    async function respondFromLookup(lookup, fields, failureMessage) {
+        try {
+            const answer = await lookup();
+            return res.json({
+                type: 'info', question: null, say: answer, query: null,
+                action: null, fields: fields || {}, message: answer,
+            });
+        } catch (lookupErr) {
+            console.error('lookup error:', lookupErr);
+            return res.json({
+                type: 'error', question: null, say: null, query: null,
+                action: null, fields: fields || {}, message: failureMessage,
+            });
+        }
+    }
+
     try {
         const result = await call({ transcript, history, knownFields, env });
 
-        // "search" — промежуточный шаг, наружу (в приложение) никогда не
-        // уходит: модель только формулирует запрос, а реальный ответ
-        // берём из отдельного поиска (см. yandex-search.js) и уже его
-        // отдаём как обычный "info". Если поиск не удался — честно
-        // говорим об этом, а не молчим и не читаем пустоту.
-        //
-        // ВАЖНО (2026-09-06, живой баг): раньше в это условие входило
-        // "&& result.query" — если модель вернула type:"search", но
-        // забыла (или не смогла) сформулировать query, сырой объект с
-        // type:"search" улетал клиенту как есть. Android не знает такого
-        // type, попадает в свой else-фолбэк ("Что-то пошло не так") и
-        // затихает — воспроизведено на реальном вопросе про кофе.
-        // Теперь ЛЮБОЙ type:"search" перехватывается здесь; отсутствие
-        // query просто считается неудачным поиском.
         if (result && result.type === 'search') {
-            try {
-                if (!result.query) throw new Error('model returned type:"search" without a query');
-                const answer = await searchAndSummarize({ query: result.query, env });
-                return res.json({
-                    type: 'info',
-                    question: null,
-                    say: answer,
-                    query: null,
-                    action: null,
-                    fields: result.fields || {},
-                    message: answer,
-                });
-            } catch (searchErr) {
-                console.error('search error:', searchErr);
-                return res.json({
-                    type: 'error',
-                    question: null,
-                    say: null,
-                    query: null,
-                    action: null,
-                    fields: result.fields || {},
-                    message: 'Не получилось найти ответ на этот вопрос. Могу помочь с пропуском или подсказать про заведения в комплексе.',
-                });
-            }
+            return await respondFromLookup(
+                () => {
+                    if (!result.query) throw new Error('model returned type:"search" without a query');
+                    return searchAndSummarize({ query: result.query, env });
+                },
+                result.fields,
+                'Не получилось найти ответ на этот вопрос. Могу помочь с пропуском или подсказать про заведения в комплексе.',
+            );
+        }
+
+        if (result && result.type === 'vv_search') {
+            return await respondFromLookup(
+                () => {
+                    if (!result.query) throw new Error('model returned type:"vv_search" without a query');
+                    return searchVkusVillProducts(result.query);
+                },
+                result.fields,
+                'Не получилось проверить каталог ВкусВилл. Попробуйте, пожалуйста, ещё раз.',
+            );
+        }
+
+        if (result && result.type === 'vv_discounts') {
+            return await respondFromLookup(
+                () => getVkusVillDiscounts(),
+                result.fields,
+                'Не получилось проверить акции ВкусВилл. Попробуйте, пожалуйста, ещё раз.',
+            );
         }
 
         // Последний рубеж: что бы ни случилось выше по цепочке, наружу
