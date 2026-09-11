@@ -6,4 +6,8 @@
     <color name="kiosk_accent">#6B4F36</color>
     <color name="pure_brand_tint">#EDE1D2</color>
     <color name="pure_urgent">#C1512E</color>
+    <!-- Добавлены 2026-09-11 для пузыря-подписи ассистента и
+         кнопок-подсказок — были только в JS-палитре, не в Android. -->
+    <color name="pure_surface">#F5F1EC</color>
+    <color name="pure_ink_soft">#6B6156</color>
 </resources>

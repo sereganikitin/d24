@@ -24,6 +24,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.google.android.material.chip.Chip
 import ru.uk.ds24kiosk.databinding.ActivityMainBinding
 import ru.uk.ds24kiosk.voice.VoiceAssistant
 import ru.uk.ds24kiosk.webview.AndroidBridge
@@ -226,6 +227,7 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
             val onLoginScreen = result == "true"
             binding.sessionExpiredBadge.visibility = if (onLoginScreen) View.VISIBLE else View.GONE
             binding.voiceAssistantButton.visibility = if (onLoginScreen) View.GONE else View.VISIBLE
+            if (onLoginScreen) hideAssistantCaptionAndOptions()
         }
     }
 
@@ -251,6 +253,12 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
         voiceAssistant = VoiceAssistant(this, binding.webView, object : VoiceAssistant.Listener {
             override fun onStateChanged(state: VoiceAssistant.State) {
                 renderVoiceButtonState(state)
+                if (state == VoiceAssistant.State.IDLE) hideAssistantCaptionAndOptions()
+            }
+
+            override fun onAssistantSaid(text: String, options: List<String>?) {
+                renderAssistantCaption(text)
+                renderAssistantOptions(options)
             }
 
             override fun onError(message: String) {
@@ -287,6 +295,53 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
                 if (!lottie.isAnimating) lottie.playAnimation()
             }
         }
+    }
+
+    /** Текст-подпись рядом с маскотом — то, что ассистент сейчас говорит. */
+    private fun renderAssistantCaption(text: String) {
+        binding.assistantCaption.text = text
+        binding.assistantCaption.visibility = View.VISIBLE
+    }
+
+    /**
+     * Кнопки-подсказки под текущий вопрос (2-4 коротких варианта) — тап
+     * ведёт себя так же, как если бы житель сказал этот вариант вслух
+     * (см. VoiceAssistant.submitQuickReply). null/пусто — прячем группу
+     * полностью, у вопроса со свободным ответом кнопок быть не должно.
+     */
+    private fun renderAssistantOptions(options: List<String>?) {
+        val group = binding.assistantOptions
+        group.removeAllViews()
+        if (options.isNullOrEmpty()) {
+            group.visibility = View.GONE
+            return
+        }
+        val accent = ContextCompat.getColor(this, R.color.kiosk_accent)
+        val brandTint = ContextCompat.getColorStateList(this, R.color.pure_brand_tint)!!
+        val accentStateList = ContextCompat.getColorStateList(this, R.color.kiosk_accent)!!
+        for (option in options) {
+            val chip = Chip(this).apply {
+                text = option
+                isClickable = true
+                isCheckable = false
+                chipBackgroundColor = brandTint
+                chipStrokeColor = accentStateList
+                chipStrokeWidth = 1f
+                setTextColor(accent)
+                setOnClickListener {
+                    voiceAssistant.submitQuickReply(option)
+                    hideAssistantCaptionAndOptions()
+                }
+            }
+            group.addView(chip)
+        }
+        group.visibility = View.VISIBLE
+    }
+
+    private fun hideAssistantCaptionAndOptions() {
+        binding.assistantCaption.visibility = View.GONE
+        binding.assistantOptions.visibility = View.GONE
+        binding.assistantOptions.removeAllViews()
     }
 
     private fun onAdminGestureTriggered() {

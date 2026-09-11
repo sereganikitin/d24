@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Фон пузыря-подписи ассистента (assistantCaption в activity_main.xml) —
+  тёплый почти-белый (pure_surface) с тонкой обводкой в цвет бренда.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/pure_surface" />
+    <stroke
+        android:width="1dp"
+        android:color="@color/pure_brand_tint" />
+    <corners android:radius="16dp" />
+</shape>

@@ -41,6 +41,17 @@ class VoiceAssistant(
 
     interface Listener {
         fun onStateChanged(state: State)
+
+        /**
+         * Вызывается каждый раз, когда ассистент собирается что-то
+         * сказать (до начала озвучки) — текст для подписи-пузыря на
+         * экране. options — короткие кнопки-подсказки (2-4 варианта),
+         * не null только для "ask"-вопросов с явным небольшим набором
+         * вариантов (см. RESPONSE_SCHEMA.options в backend/src/prompt.js);
+         * для всех остальных случаев null — кнопки показывать не нужно.
+         */
+        fun onAssistantSaid(text: String, options: List<String>?)
+
         fun onError(message: String)
 
         /**
@@ -105,6 +116,7 @@ class VoiceAssistant(
             hasGreeted = true
             val greeting = buildGreeting()
             history.add("assistant" to greeting)
+            listener.onAssistantSaid(greeting, null)
             speak(greeting, UTTERANCE_GREETING)
             return
         }
@@ -222,6 +234,18 @@ class VoiceAssistant(
         sendTranscript(text)
     }
 
+    /**
+     * Вызывается при тапе по кнопке-подсказке (см. Listener.onAssistantSaid
+     * options) — ведёт себя ровно так же, как если бы житель сказал этот
+     * же текст вслух: та же history/knownFields, тот же путь на backend.
+     * Если микрофон в этот момент как раз слушает — останавливаем его,
+     * чтобы не словить одновременно и тап, и распознанную речь поверх.
+     */
+    fun submitQuickReply(text: String) {
+        recognizer?.stopListening()
+        sendTranscript(text)
+    }
+
     fun release() {
         recognizer?.destroy()
         recognizer = null
@@ -280,7 +304,9 @@ class VoiceAssistant(
         when (response.optString("type")) {
             "ask" -> {
                 val question = response.optNullableString("question", "Уточните, пожалуйста")
+                val options = response.optNullableStringList("options")
                 history.add("assistant" to question)
+                listener.onAssistantSaid(question, options)
                 speak(question, UTTERANCE_ASK)
             }
             "fill" -> {
@@ -289,11 +315,13 @@ class VoiceAssistant(
                 val action = response.optString("action")
                 fillForm(action, fields)
                 endSession()
+                listener.onAssistantSaid(say, null)
                 speak(say, UTTERANCE_FINAL)
             }
             "error" -> {
                 val message = response.optNullableString("message", "Не получилось разобрать запрос")
                 endSession()
+                listener.onAssistantSaid(message, null)
                 speak(message, UTTERANCE_FINAL)
             }
             "info" -> {
@@ -301,11 +329,14 @@ class VoiceAssistant(
                 // сценария пропуска, просто озвучиваем и завершаем.
                 val say = response.optNullableString("say", "")
                 endSession()
+                listener.onAssistantSaid(say, null)
                 speak(say, UTTERANCE_FINAL)
             }
             else -> {
                 endSession()
-                speak("Что-то пошло не так, попробуйте ещё раз", UTTERANCE_FINAL)
+                val fallback = "Что-то пошло не так, попробуйте ещё раз"
+                listener.onAssistantSaid(fallback, null)
+                speak(fallback, UTTERANCE_FINAL)
             }
         }
     }
@@ -327,6 +358,14 @@ class VoiceAssistant(
      */
     private fun JSONObject.optNullableString(key: String, default: String): String =
         if (isNull(key)) default else optString(key, default)
+
+    /** options — либо JSON null, либо массив строк; отсутствие ключа
+     *  (старые ответы сервера до добавления этого поля) тоже null. */
+    private fun JSONObject.optNullableStringList(key: String): List<String>? {
+        if (!has(key) || isNull(key)) return null
+        val array = optJSONArray(key) ?: return null
+        return (0 until array.length()).mapNotNull { array.optString(it, null) }
+    }
 
     private fun fillForm(action: String, fields: JSONObject) {
         val jsFunction = when (action) {
