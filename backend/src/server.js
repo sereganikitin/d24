@@ -5,6 +5,7 @@ import { callYandexGpt } from './providers/yandexgpt.js';
 import { synthesizeSpeech } from './providers/yandex-tts.js';
 import { searchAndSummarize } from './providers/yandex-search.js';
 import { searchVkusVillProducts, getVkusVillDiscounts } from './providers/vkusvill-mcp.js';
+import { isKnownApartment, isKnownParkingSpot, warmDs24Cache } from './providers/ds24-api.js';
 import { classifyPassTypeByKeywords, classifyRequestKindByKeywords } from './prompt.js';
 
 /**
@@ -34,6 +35,13 @@ import { classifyPassTypeByKeywords, classifyRequestKindByKeywords } from './pro
  * публичный MCP-сервер (vkusvill-mcp.js). Только чтение каталога, без
  * реальных заказов — финальную корзину/покупку житель всё равно делает
  * сам через сайт/приложение ВкусВилла.
+ *
+ * 2026-09-11: apartment/parkingSpotNumber, которые называет житель,
+ * сверяются с реальным справочником помещений Dispatcher24 (ds24-api.js,
+ * тоже только чтение) — если такого номера нет ни в одном доме
+ * комплекса, ассистент переспрашивает вместо того, чтобы молча принять
+ * произвольное число. Если интеграция не настроена или Dispatcher24
+ * недоступен — проверка тихо пропускается, это не блокирует пропуск.
  */
 const PROVIDERS = {
     yandexgpt: callYandexGpt,
@@ -95,8 +103,51 @@ app.post('/assist', async (req, res) => {
         }
     }
 
+    // Сверяет apartment/parkingSpotNumber, если модель их только что
+    // извлекла из фразы, с реальным справочником помещений Dispatcher24.
+    // Работает только для ask/fill — это единственные типы, где вообще
+    // бывают такие поля; isKnownX возвращает null, если проверить не
+    // удалось (интеграция не настроена/Dispatcher24 недоступен) — в этом
+    // случае ничего не меняем, а не блокируем житителя из-за нашей же
+    // технической проблемы.
+    async function validateAgainstDs24(result) {
+        if (!result || !result.fields) return result;
+        if (result.type !== 'ask' && result.type !== 'fill') return result;
+
+        const apt = result.fields.destinationApartment;
+        if (apt) {
+            const known = await isKnownApartment(apt, env);
+            if (known === false) {
+                return {
+                    type: 'ask',
+                    question: `Не нашёл апартамент номер ${apt} в этом доме. Повторите, пожалуйста, номер ещё раз.`,
+                    say: null, query: null, action: null,
+                    fields: { ...result.fields, destinationApartment: null },
+                    message: null,
+                };
+            }
+        }
+
+        const spot = result.fields.parkingSpotNumber;
+        if (spot) {
+            const known = await isKnownParkingSpot(spot, env);
+            if (known === false) {
+                return {
+                    type: 'ask',
+                    question: `Не нашёл машиноместо номер ${spot} в этом доме. Повторите, пожалуйста, номер ещё раз.`,
+                    say: null, query: null, action: null,
+                    fields: { ...result.fields, parkingSpotNumber: null },
+                    message: null,
+                };
+            }
+        }
+
+        return result;
+    }
+
     try {
-        const result = await call({ transcript, history, knownFields, env });
+        let result = await call({ transcript, history, knownFields, env });
+        result = await validateAgainstDs24(result);
 
         if (result && result.type === 'search') {
             return await respondFromLookup(
@@ -200,3 +251,7 @@ const port = Number(process.env.PORT) || 3011;
 app.listen(port, '127.0.0.1', () => {
     console.log(`d24-voice-assist listening on 127.0.0.1:${port}`);
 });
+
+// Прогреваем справочник помещений Dispatcher24 сразу при старте, чтобы
+// первый реальный запрос жителя не ждал 7 последовательных вызовов API.
+warmDs24Cache(process.env);
