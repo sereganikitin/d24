@@ -92,13 +92,13 @@ app.post('/assist', async (req, res) => {
             const answer = await lookup();
             return res.json({
                 type: 'info', question: null, say: answer, query: null,
-                action: null, fields: fields || {}, message: answer,
+                action: null, fields: fields || {}, message: answer, options: null,
             });
         } catch (lookupErr) {
             console.error('lookup error:', lookupErr);
             return res.json({
                 type: 'error', question: null, say: null, query: null,
-                action: null, fields: fields || {}, message: failureMessage,
+                action: null, fields: fields || {}, message: failureMessage, options: null,
             });
         }
     }
@@ -123,7 +123,7 @@ app.post('/assist', async (req, res) => {
                     question: `Не нашёл апартамент номер ${apt} в этом доме. Повторите, пожалуйста, номер ещё раз.`,
                     say: null, query: null, action: null,
                     fields: { ...result.fields, destinationApartment: null },
-                    message: null,
+                    message: null, options: null,
                 };
             }
         }
@@ -137,7 +137,7 @@ app.post('/assist', async (req, res) => {
                     question: `Не нашёл машиноместо номер ${spot} в этом доме. Повторите, пожалуйста, номер ещё раз.`,
                     say: null, query: null, action: null,
                     fields: { ...result.fields, parkingSpotNumber: null },
-                    message: null,
+                    message: null, options: null,
                 };
             }
         }
@@ -195,6 +195,7 @@ app.post('/assist', async (req, res) => {
                 action: null,
                 fields: (result && result.fields) || {},
                 message: 'Не получилось разобрать запрос. Попробуйте, пожалуйста, ещё раз.',
+                options: null,
             });
         }
 
@@ -208,6 +209,7 @@ app.post('/assist', async (req, res) => {
         res.status(502).json({
             type: 'error',
             message: 'Извините, сейчас не получается связаться с сервисом. Попробуйте, пожалуйста, ещё раз через минуту.',
+            options: null,
         });
     }
 });
