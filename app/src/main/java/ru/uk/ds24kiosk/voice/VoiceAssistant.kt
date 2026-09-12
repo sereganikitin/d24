@@ -39,18 +39,24 @@ class VoiceAssistant(
 ) {
     enum class State { IDLE, LISTENING, THINKING, SPEAKING }
 
+    /** Карточка-итог под репликой консьержа (см. assets/concierge/index.html,
+     *  result). Собирается из уже пришедших fields — только то, что
+     *  реально известно, без выдуманных номеров заявок/QR. */
+    data class ConciergeResult(val title: String, val tag: String?, val lines: List<Pair<String, String>>)
+
     interface Listener {
         fun onStateChanged(state: State)
 
         /**
          * Вызывается каждый раз, когда ассистент собирается что-то
-         * сказать (до начала озвучки) — текст для подписи-пузыря на
-         * экране. options — короткие кнопки-подсказки (2-4 варианта),
+         * сказать (до начала озвучки) — текст для реплики на экране
+         * консьержа. options — короткие кнопки-подсказки (2-4 варианта),
          * не null только для "ask"-вопросов с явным небольшим набором
          * вариантов (см. RESPONSE_SCHEMA.options в backend/src/prompt.js);
-         * для всех остальных случаев null — кнопки показывать не нужно.
+         * для всех остальных случаев null. result — карточка-итог,
+         * непустая только сразу после "fill" (заказ подготовлен).
          */
-        fun onAssistantSaid(text: String, options: List<String>?)
+        fun onAssistantSaid(text: String, options: List<String>?, result: ConciergeResult?)
 
         fun onError(message: String)
 
@@ -116,7 +122,7 @@ class VoiceAssistant(
             hasGreeted = true
             val greeting = buildGreeting()
             history.add("assistant" to greeting)
-            listener.onAssistantSaid(greeting, null)
+            listener.onAssistantSaid(greeting, null, null)
             speak(greeting, UTTERANCE_GREETING)
             return
         }
@@ -246,6 +252,27 @@ class VoiceAssistant(
         sendTranscript(text)
     }
 
+    /**
+     * Житель вручную закрыл экран консьержа ("Назад") посреди разговора —
+     * останавливаем всё, что ещё звучит/слушает, и сбрасываем сессию
+     * полностью (endSession), чтобы следующее открытие начиналось с
+     * приветствия, а не с обрывка прошлого разговора.
+     */
+    fun cancel() {
+        recognizer?.stopListening()
+        recognizer?.cancel()
+        tts?.stop()
+        try {
+            mediaPlayer?.stop()
+        } catch (_: Exception) {
+            // Мог быть ещё не подготовлен/уже остановлен — не критично.
+        }
+        mediaPlayer?.release()
+        mediaPlayer = null
+        endSession()
+        setState(State.IDLE)
+    }
+
     fun release() {
         recognizer?.destroy()
         recognizer = null
@@ -306,7 +333,7 @@ class VoiceAssistant(
                 val question = response.optNullableString("question", "Уточните, пожалуйста")
                 val options = response.optNullableStringList("options")
                 history.add("assistant" to question)
-                listener.onAssistantSaid(question, options)
+                listener.onAssistantSaid(question, options, null)
                 speak(question, UTTERANCE_ASK)
             }
             "fill" -> {
@@ -314,18 +341,19 @@ class VoiceAssistant(
                 val fields = response.optJSONObject("fields") ?: JSONObject()
                 val action = response.optString("action")
                 fillForm(action, fields)
+                val result = buildResultFromFields(fields, action)
                 // Не endSession() — дело сделано, но разговор продолжается:
                 // после этой фразы ассистент сам спросит "ещё чем-то
                 // помочь?" (см. onSpeechFinished/askIfAnythingElse), не
                 // прощаясь молча.
                 softResetForFollowUp()
-                listener.onAssistantSaid(say, null)
+                listener.onAssistantSaid(say, null, result)
                 speak(say, UTTERANCE_FILL_DONE)
             }
             "error" -> {
                 val message = response.optNullableString("message", "Не получилось разобрать запрос")
                 endSession()
-                listener.onAssistantSaid(message, null)
+                listener.onAssistantSaid(message, null, null)
                 speak(message, UTTERANCE_FINAL)
             }
             "info" -> {
@@ -334,7 +362,7 @@ class VoiceAssistant(
                 // — так же ведёт к "ещё чем-то помочь?", как и "fill".
                 val say = response.optNullableString("say", "")
                 softResetForFollowUp()
-                listener.onAssistantSaid(say, null)
+                listener.onAssistantSaid(say, null, null)
                 speak(say, UTTERANCE_FILL_DONE)
             }
             "bye" -> {
@@ -344,16 +372,41 @@ class VoiceAssistant(
                 // придумывать; она и не пытается, message/say тут null.
                 val farewell = buildFarewell()
                 endSession()
-                listener.onAssistantSaid(farewell, null)
+                listener.onAssistantSaid(farewell, null, null)
                 speak(farewell, UTTERANCE_FINAL)
             }
             else -> {
                 endSession()
                 val fallback = "Что-то пошло не так, попробуйте ещё раз"
-                listener.onAssistantSaid(fallback, null)
+                listener.onAssistantSaid(fallback, null, null)
                 speak(fallback, UTTERANCE_FINAL)
             }
         }
+    }
+
+    /**
+     * Карточка-итог для экрана консьержа сразу после "fill" — только
+     * реально пришедшие поля (Госномер/Машиноместо/Гость/Апартамент/
+     * категория заявки), без выдуманных номеров заявок или QR: наша
+     * система не выдаёт ни то, ни другое, форму по-прежнему заполняет и
+     * отправляет житель сам на сайте.
+     */
+    private fun buildResultFromFields(fields: JSONObject, action: String): ConciergeResult? {
+        val lines = mutableListOf<Pair<String, String>>()
+        fields.optNullableStringOrNull("plateNumber")?.let { lines.add("Госномер" to it) }
+        fields.optNullableStringOrNull("parkingSpotNumber")?.let { lines.add("Машиноместо" to it) }
+        fields.optNullableStringOrNull("guestName")?.let { lines.add("Гость" to it) }
+        fields.optNullableStringOrNull("destinationApartment")?.let { lines.add("Апартамент" to it) }
+        fields.optNullableStringOrNull("serviceCategory")?.let { lines.add("Категория" to it) }
+        fields.optNullableStringOrNull("serviceQuantity")?.let { lines.add("Количество мешков" to it) }
+        if (lines.isEmpty()) return null
+        val title = when (action) {
+            "order_car_pass" -> "Пропуск на машину"
+            "order_walkin_pass" -> "Пропуск для гостя"
+            "order_service_trash_removal" -> "Вывоз мусора"
+            else -> "Готово"
+        }
+        return ConciergeResult(title, null, lines)
     }
 
     private fun buildFarewell(): String {
@@ -376,7 +429,7 @@ class VoiceAssistant(
     private fun askIfAnythingElse() {
         val question = "Могу ещё чем-то помочь?"
         history.add("assistant" to question)
-        listener.onAssistantSaid(question, DEFAULT_FOLLOWUP_OPTIONS)
+        listener.onAssistantSaid(question, DEFAULT_FOLLOWUP_OPTIONS, null)
         speak(question, UTTERANCE_ASK)
     }
 
@@ -411,6 +464,15 @@ class VoiceAssistant(
      */
     private fun JSONObject.optNullableString(key: String, default: String): String =
         if (isNull(key)) default else optString(key, default)
+
+    /** Как optNullableString, но без дефолта — null, если поля нет,
+     *  оно JSON null, или пустая строка (для карточки-результата пустых
+     *  строк быть не должно). */
+    private fun JSONObject.optNullableStringOrNull(key: String): String? {
+        if (!has(key) || isNull(key)) return null
+        val value = optString(key, "")
+        return value.ifBlank { null }
+    }
 
     /** options — либо JSON null, либо массив строк; отсутствие ключа
      *  (старые ответы сервера до добавления этого поля) тоже null. */

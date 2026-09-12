@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Круглая кнопка-триггер полноэкранного консьержа — тот же
+     золотисто-кофейный акцент, что и кнопка "Говорите" в самом
+     консьерже (rgba(158,136,111,.14) фон / rgba(158,136,111,.45) обводка). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="#24C0A683" />
+    <stroke
+        android:width="1dp"
+        android:color="#73C0A683" />
+</shape>

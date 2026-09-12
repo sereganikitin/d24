@@ -6,8 +6,11 @@
     <color name="kiosk_accent">#6B4F36</color>
     <color name="pure_brand_tint">#EDE1D2</color>
     <color name="pure_urgent">#C1512E</color>
-    <!-- Добавлены 2026-09-11 для пузыря-подписи ассистента и
-         кнопок-подсказок — были только в JS-палитре, не в Android. -->
-    <color name="pure_surface">#F5F1EC</color>
-    <color name="pure_ink_soft">#6B6156</color>
+    <!-- Палитра полноэкранного голосового консьержа (2026-09-13) —
+         извлечена из макета заказчика (Claude Design), см. план
+         humble-toasting-harbor.md. Сама страница живёт в
+         assets/concierge/index.html (там же эти цвета как CSS-переменные) —
+         тут только то, что нужно нативной стороне (иконка-триггер). -->
+    <color name="concierge_bg">#141416</color>
+    <color name="concierge_accent">#9E886F</color>
 </resources>

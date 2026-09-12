@@ -55,82 +55,41 @@
         android:visibility="gone" />
 
     <!--
-      Весь блок ассистента (кнопки-подсказки + пузырь-подпись + маскот) —
-      ОДИН вертикальный LinearLayout, а не независимые вью с фиксированными
-      margin. Раньше assistantOptions и assistantRow позиционировались
-      каждый своим отдельным layout_marginBottom, подобранным на глаз под
-      КОРОТКИЙ текст — на маленьком экране (телефон) длинный вопрос
-      "Чем могу помочь?..." переносится на несколько строк, пузырь
-      вырастает выше расчётной высоты, и фиксированный отступ у кнопок
-      над ним переставал совпадать с реальной верхней границей пузыря —
-      кнопки наезжали на текст. В LinearLayout высота каждого ребёнка
-      просто складывается, поэтому блок растёт вверх сам, сколько бы
-      строк ни было — наложения в принципе не может быть, вне
-      зависимости от размера экрана.
+      Кнопка-триггер полноэкранного консьержа (см. conciergeWebView
+      ниже) — просто круглая кнопка в акцентных цветах консьержа, без
+      отдельного маскота/анимации, чтобы не смешивать два разных
+      персонажа (сам консьерж со своей анимацией живёт внутри
+      conciergeWebView). Гейт видимости — как и раньше, по экрану логина
+      (см. MainActivity.refreshAuthState).
     -->
-    <LinearLayout
-        android:id="@+id/assistantContainer"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+    <ImageButton
+        android:id="@+id/voiceAssistantButton"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
         android:layout_gravity="bottom|end"
         android:layout_marginEnd="16dp"
-        android:layout_marginBottom="100dp"
-        android:gravity="end"
-        android:orientation="vertical">
+        android:layout_marginBottom="16dp"
+        android:background="@drawable/bg_concierge_trigger"
+        android:contentDescription="@string/voice_assistant_button"
+        android:padding="18dp"
+        android:scaleType="fitCenter"
+        android:src="@drawable/ic_mic"
+        android:visibility="gone" />
 
-        <!--
-          Кнопки-подсказки (2-4 коротких варианта, см.
-          VoiceAssistant.Listener.onAssistantSaid) — дочерние Chip
-          создаются в коде (MainActivity.renderAssistantOptions).
-        -->
-        <com.google.android.material.chip.ChipGroup
-            android:id="@+id/assistantOptions"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp"
-            android:visibility="gone"
-            app:chipSpacingHorizontal="8dp"
-            app:singleLine="false" />
-
-        <!--
-          Строка "пузырь-подпись + маскот" — то, что ассистент сейчас
-          говорит, текстом слева от персонажа.
-        -->
-        <LinearLayout
-            android:id="@+id/assistantRow"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:gravity="bottom"
-            android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/assistantCaption"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="8dp"
-                android:layout_marginBottom="24dp"
-                android:background="@drawable/bg_speech_bubble"
-                android:paddingStart="14dp"
-                android:paddingTop="10dp"
-                android:paddingEnd="14dp"
-                android:paddingBottom="10dp"
-                android:textColor="@color/kiosk_background"
-                android:textSize="14sp"
-                android:visibility="gone" />
-
-            <com.airbnb.lottie.LottieAnimationView
-                android:id="@+id/voiceAssistantButton"
-                android:layout_width="88dp"
-                android:layout_height="105dp"
-                android:clickable="true"
-                android:focusable="true"
-                android:visibility="gone"
-                android:contentDescription="@string/voice_assistant_button"
-                app:lottie_rawRes="@raw/scout"
-                app:lottie_loop="true"
-                app:lottie_autoPlay="false" />
-        </LinearLayout>
-    </LinearLayout>
+    <!--
+      Полноэкранный голосовой консьерж — второй WebView со своей
+      локальной страницей (assets/concierge/index.html), поверх
+      основного WebView с lk.purehome.ru. Открывается тапом по
+      voiceAssistantButton, закрывается по "Назад" внутри самой
+      страницы (см. MainActivity.ConciergeBridge.onBack). Смотреть
+      разметку/логику именно в assets/concierge/index.html — это не
+      маленький оверлей, а полный самостоятельный экран.
+    -->
+    <WebView
+        android:id="@+id/conciergeWebView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
 
     <!--
       Скрытая зона обслуживания: удержание пальца ~3 сек в этом углу

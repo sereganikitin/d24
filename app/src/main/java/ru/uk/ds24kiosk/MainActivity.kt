@@ -14,6 +14,7 @@ import android.speech.RecognizerIntent
 import android.view.MotionEvent
 import android.view.View
 import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.view.WindowManager
@@ -24,7 +25,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import com.google.android.material.chip.Chip
+import org.json.JSONArray
+import org.json.JSONObject
 import ru.uk.ds24kiosk.databinding.ActivityMainBinding
 import ru.uk.ds24kiosk.voice.VoiceAssistant
 import ru.uk.ds24kiosk.webview.AndroidBridge
@@ -42,8 +44,16 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
     private var longPressRunnable: Runnable? = null
 
     private lateinit var voiceAssistant: VoiceAssistant
+
+    // Кнопки-подсказки, показанные последним render() — по индексу из
+    // ConciergeBridge.onOption() нужно понять, какой именно текст тапнул
+    // житель (в HTML лежат только label/sub, а submitQuickReply() ждёт
+    // ровно ту же строку, что ушла бы голосом).
+    private var lastConciergeOptions: List<String> = emptyList()
+
     private val micPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
+            openConcierge()
             voiceAssistant.startListening()
         } else {
             Toast.makeText(this, R.string.voice_mic_permission_needed, Toast.LENGTH_LONG).show()
@@ -84,6 +94,7 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
         applyImmersiveMode()
 
         setupWebView()
+        setupConciergeWebView()
         setupAdminGesture()
         setupVoiceAssistant()
         mainHandler.postDelayed(idleReturnRunnable, IDLE_CHECK_INTERVAL_MS)
@@ -173,6 +184,91 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
         webView.loadUrl(getString(R.string.portal_url))
     }
 
+    /**
+     * Второй, полностью независимый WebView — полноэкранный голосовой
+     * консьерж (assets/concierge/index.html), поверх основного WebView
+     * с lk.purehome.ru. Обычные настройки JS/DOM хранилища тут не
+     * нужны в таком объёме, как для сайта УК — своя простая страница,
+     * без куки/логина. См. ConciergeBridge ниже — это её window.ConciergeBridge.
+     */
+    private fun setupConciergeWebView() {
+        val concierge = binding.conciergeWebView
+        concierge.settings.javaScriptEnabled = true
+        concierge.addJavascriptInterface(ConciergeBridge(), "ConciergeBridge")
+        concierge.loadUrl("file:///android_asset/concierge/index.html")
+    }
+
+    private fun openConcierge() {
+        binding.conciergeWebView.visibility = View.VISIBLE
+    }
+
+    private fun closeConcierge() {
+        binding.conciergeWebView.visibility = View.GONE
+    }
+
+    /**
+     * То, что консьерж сейчас говорит/предлагает — текст, кнопки и,
+     * после успешного заказа, карточка-итог. Пушится в JS одним вызовом
+     * render(); анимация состояния (моргание/рот/индикатор слушания)
+     * переключается отдельно, см. onStateChanged → setState в JS.
+     */
+    private fun renderConcierge(text: String, options: List<String>?, result: VoiceAssistant.ConciergeResult?) {
+        lastConciergeOptions = options ?: emptyList()
+        val payload = JSONObject().apply {
+            put("say", text)
+            put(
+                "hint",
+                if (lastConciergeOptions.isNotEmpty()) "Скажите или выберите вариант ниже" else "Говорите — я слушаю",
+            )
+            put(
+                "options",
+                JSONArray().apply {
+                    lastConciergeOptions.forEach { label -> put(JSONObject().apply { put("label", label) }) }
+                },
+            )
+            put(
+                "result",
+                result?.let { r ->
+                    JSONObject().apply {
+                        put("title", r.title)
+                        put("tag", r.tag)
+                        put(
+                            "lines",
+                            JSONArray().apply {
+                                r.lines.forEach { (k, v) -> put(JSONObject().apply { put("k", k); put("v", v) }) }
+                            },
+                        )
+                    }
+                },
+            )
+        }
+        binding.conciergeWebView.evaluateJavascript("window.DS24Concierge.render($payload)", null)
+    }
+
+    /** Мост consierge/index.html → Kotlin. Методы вызываются WebView не
+     *  на главном потоке — SpeechRecognizer и работа с View требуют
+     *  главный, поэтому везде runOnUiThread. */
+    inner class ConciergeBridge {
+        @JavascriptInterface
+        fun onOption(index: Int) {
+            val label = lastConciergeOptions.getOrNull(index) ?: return
+            runOnUiThread { voiceAssistant.submitQuickReply(label) }
+        }
+
+        @JavascriptInterface
+        fun onBack() {
+            runOnUiThread {
+                voiceAssistant.cancel()
+                closeConcierge()
+            }
+        }
+
+        @JavascriptInterface
+        fun onMicTap() {
+            runOnUiThread { voiceAssistant.startListening() }
+        }
+    }
+
     // KioskWebViewClient.Listener
     override fun onMainFrameError() {
         showOfflineOverlay()
@@ -227,7 +323,10 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
             val onLoginScreen = result == "true"
             binding.sessionExpiredBadge.visibility = if (onLoginScreen) View.VISIBLE else View.GONE
             binding.voiceAssistantButton.visibility = if (onLoginScreen) View.GONE else View.VISIBLE
-            if (onLoginScreen) hideAssistantCaptionAndOptions()
+            if (onLoginScreen && ::voiceAssistant.isInitialized) {
+                voiceAssistant.cancel()
+                closeConcierge()
+            }
         }
     }
 
@@ -252,13 +351,21 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
     private fun setupVoiceAssistant() {
         voiceAssistant = VoiceAssistant(this, binding.webView, object : VoiceAssistant.Listener {
             override fun onStateChanged(state: VoiceAssistant.State) {
-                renderVoiceButtonState(state)
-                if (state == VoiceAssistant.State.IDLE) hideAssistantCaptionAndOptions()
+                if (state == VoiceAssistant.State.IDLE) {
+                    closeConcierge()
+                } else {
+                    val jsState = when (state) {
+                        VoiceAssistant.State.LISTENING -> "listening"
+                        VoiceAssistant.State.THINKING -> "thinking"
+                        VoiceAssistant.State.SPEAKING -> "speaking"
+                        VoiceAssistant.State.IDLE -> "idle" // недостижимо в этой ветке, для exhaustiveness
+                    }
+                    binding.conciergeWebView.evaluateJavascript("window.DS24Concierge.setState('$jsState')", null)
+                }
             }
 
-            override fun onAssistantSaid(text: String, options: List<String>?) {
-                renderAssistantCaption(text)
-                renderAssistantOptions(options)
+            override fun onAssistantSaid(text: String, options: List<String>?, result: VoiceAssistant.ConciergeResult?) {
+                renderConcierge(text, options, result)
             }
 
             override fun onError(message: String) {
@@ -273,87 +380,12 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
             val hasPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
                 PackageManager.PERMISSION_GRANTED
             if (hasPermission) {
+                openConcierge()
                 voiceAssistant.startListening()
             } else {
                 micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
             }
         }
-    }
-
-    private fun renderVoiceButtonState(state: VoiceAssistant.State) {
-        val lottie = binding.voiceAssistantButton
-        when (state) {
-            // Персонаж (scout.json) пока одна сплошная анимация без
-            // отдельных сегментов под каждое состояние — "оживает" на
-            // время всего взаимодействия и замирает в ожидании. Когда
-            // появится анимация с именованными сегментами под
-            // idle/listening/thinking/speaking, здесь нужно будет играть
-            // конкретный отрезок через setMinAndMaxFrame(...) вместо
-            // play/pause всего ролика целиком.
-            VoiceAssistant.State.IDLE -> lottie.pauseAnimation()
-            VoiceAssistant.State.LISTENING, VoiceAssistant.State.THINKING, VoiceAssistant.State.SPEAKING -> {
-                if (!lottie.isAnimating) lottie.playAnimation()
-            }
-        }
-    }
-
-    /**
-     * Текст-подпись рядом с маскотом — то, что ассистент сейчас говорит.
-     * Максимальная ширина пузыря считается от реальной ширины экрана
-     * (60%, но не меньше 160dp и не больше 260dp), а не берётся фиксированным
-     * числом в XML — на маленьком телефонном экране фиксированные 240dp
-     * почти во всю ширину, а на планшете-киоске текст растягивался бы в
-     * одну неудобную для чтения строку через весь экран.
-     */
-    private fun renderAssistantCaption(text: String) {
-        val caption = binding.assistantCaption
-        val density = resources.displayMetrics.density
-        val screenWidthDp = resources.displayMetrics.widthPixels / density
-        val maxWidthDp = (screenWidthDp * 0.6f).coerceIn(160f, 260f)
-        caption.maxWidth = (maxWidthDp * density).toInt()
-        caption.text = text
-        caption.visibility = View.VISIBLE
-    }
-
-    /**
-     * Кнопки-подсказки под текущий вопрос (2-4 коротких варианта) — тап
-     * ведёт себя так же, как если бы житель сказал этот вариант вслух
-     * (см. VoiceAssistant.submitQuickReply). null/пусто — прячем группу
-     * полностью, у вопроса со свободным ответом кнопок быть не должно.
-     */
-    private fun renderAssistantOptions(options: List<String>?) {
-        val group = binding.assistantOptions
-        group.removeAllViews()
-        if (options.isNullOrEmpty()) {
-            group.visibility = View.GONE
-            return
-        }
-        val accent = ContextCompat.getColor(this, R.color.kiosk_accent)
-        val brandTint = ContextCompat.getColorStateList(this, R.color.pure_brand_tint)!!
-        val accentStateList = ContextCompat.getColorStateList(this, R.color.kiosk_accent)!!
-        for (option in options) {
-            val chip = Chip(this).apply {
-                text = option
-                isClickable = true
-                isCheckable = false
-                chipBackgroundColor = brandTint
-                chipStrokeColor = accentStateList
-                chipStrokeWidth = 1f
-                setTextColor(accent)
-                setOnClickListener {
-                    voiceAssistant.submitQuickReply(option)
-                    hideAssistantCaptionAndOptions()
-                }
-            }
-            group.addView(chip)
-        }
-        group.visibility = View.VISIBLE
-    }
-
-    private fun hideAssistantCaptionAndOptions() {
-        binding.assistantCaption.visibility = View.GONE
-        binding.assistantOptions.visibility = View.GONE
-        binding.assistantOptions.removeAllViews()
     }
 
     private fun onAdminGestureTriggered() {
