@@ -55,65 +55,81 @@
         android:visibility="gone" />
 
     <!--
-      Кнопки-подсказки (2-4 коротких варианта ответа, см.
-      VoiceAssistant.Listener.onAssistantSaid) — над строкой
-      маскот+пузырь, чтобы не перекрывать их. Дочерние Chip создаются
-      в коде (MainActivity.renderAssistantOptions), не хардкодятся тут.
-    -->
-    <com.google.android.material.chip.ChipGroup
-        android:id="@+id/assistantOptions"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom|end"
-        android:layout_marginEnd="16dp"
-        android:layout_marginBottom="215dp"
-        android:visibility="gone"
-        app:chipSpacingHorizontal="8dp"
-        app:singleLine="false" />
-
-    <!--
-      Строка "пузырь-подпись + маскот" — то, что ассистент сейчас
-      говорит, текстом слева от персонажа (см. onAssistantSaid).
-      Margin end/bottom — те же, что были у одинокого voiceAssistantButton
-      до этой правки, чтобы маскот остался на своём месте.
+      Весь блок ассистента (кнопки-подсказки + пузырь-подпись + маскот) —
+      ОДИН вертикальный LinearLayout, а не независимые вью с фиксированными
+      margin. Раньше assistantOptions и assistantRow позиционировались
+      каждый своим отдельным layout_marginBottom, подобранным на глаз под
+      КОРОТКИЙ текст — на маленьком экране (телефон) длинный вопрос
+      "Чем могу помочь?..." переносится на несколько строк, пузырь
+      вырастает выше расчётной высоты, и фиксированный отступ у кнопок
+      над ним переставал совпадать с реальной верхней границей пузыря —
+      кнопки наезжали на текст. В LinearLayout высота каждого ребёнка
+      просто складывается, поэтому блок растёт вверх сам, сколько бы
+      строк ни было — наложения в принципе не может быть, вне
+      зависимости от размера экрана.
     -->
     <LinearLayout
-        android:id="@+id/assistantRow"
+        android:id="@+id/assistantContainer"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|end"
         android:layout_marginEnd="16dp"
         android:layout_marginBottom="100dp"
-        android:gravity="bottom"
-        android:orientation="horizontal">
+        android:gravity="end"
+        android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/assistantCaption"
+        <!--
+          Кнопки-подсказки (2-4 коротких варианта, см.
+          VoiceAssistant.Listener.onAssistantSaid) — дочерние Chip
+          создаются в коде (MainActivity.renderAssistantOptions).
+        -->
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/assistantOptions"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginEnd="8dp"
-            android:layout_marginBottom="24dp"
-            android:background="@drawable/bg_speech_bubble"
-            android:maxWidth="240dp"
-            android:paddingStart="14dp"
-            android:paddingTop="10dp"
-            android:paddingEnd="14dp"
-            android:paddingBottom="10dp"
-            android:textColor="@color/kiosk_background"
-            android:textSize="14sp"
-            android:visibility="gone" />
-
-        <com.airbnb.lottie.LottieAnimationView
-            android:id="@+id/voiceAssistantButton"
-            android:layout_width="88dp"
-            android:layout_height="105dp"
-            android:clickable="true"
-            android:focusable="true"
+            android:layout_marginBottom="8dp"
             android:visibility="gone"
-            android:contentDescription="@string/voice_assistant_button"
-            app:lottie_rawRes="@raw/scout"
-            app:lottie_loop="true"
-            app:lottie_autoPlay="false" />
+            app:chipSpacingHorizontal="8dp"
+            app:singleLine="false" />
+
+        <!--
+          Строка "пузырь-подпись + маскот" — то, что ассистент сейчас
+          говорит, текстом слева от персонажа.
+        -->
+        <LinearLayout
+            android:id="@+id/assistantRow"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="bottom"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/assistantCaption"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:layout_marginBottom="24dp"
+                android:background="@drawable/bg_speech_bubble"
+                android:paddingStart="14dp"
+                android:paddingTop="10dp"
+                android:paddingEnd="14dp"
+                android:paddingBottom="10dp"
+                android:textColor="@color/kiosk_background"
+                android:textSize="14sp"
+                android:visibility="gone" />
+
+            <com.airbnb.lottie.LottieAnimationView
+                android:id="@+id/voiceAssistantButton"
+                android:layout_width="88dp"
+                android:layout_height="105dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:visibility="gone"
+                android:contentDescription="@string/voice_assistant_button"
+                app:lottie_rawRes="@raw/scout"
+                app:lottie_loop="true"
+                app:lottie_autoPlay="false" />
+        </LinearLayout>
     </LinearLayout>
 
     <!--

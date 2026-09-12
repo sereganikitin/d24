@@ -314,9 +314,13 @@ class VoiceAssistant(
                 val fields = response.optJSONObject("fields") ?: JSONObject()
                 val action = response.optString("action")
                 fillForm(action, fields)
-                endSession()
+                // Не endSession() — дело сделано, но разговор продолжается:
+                // после этой фразы ассистент сам спросит "ещё чем-то
+                // помочь?" (см. onSpeechFinished/askIfAnythingElse), не
+                // прощаясь молча.
+                softResetForFollowUp()
                 listener.onAssistantSaid(say, null)
-                speak(say, UTTERANCE_FINAL)
+                speak(say, UTTERANCE_FILL_DONE)
             }
             "error" -> {
                 val message = response.optNullableString("message", "Не получилось разобрать запрос")
@@ -325,12 +329,23 @@ class VoiceAssistant(
                 speak(message, UTTERANCE_FINAL)
             }
             "info" -> {
-                // Справочный ответ (где кофе/аптека и т.п.) — не часть
-                // сценария пропуска, просто озвучиваем и завершаем.
+                // Справочный ответ (где кофе/аптека и т.п.) — тоже не
+                // конец разговора, а законченный маленький "запрос-ответ"
+                // — так же ведёт к "ещё чем-то помочь?", как и "fill".
                 val say = response.optNullableString("say", "")
-                endSession()
+                softResetForFollowUp()
                 listener.onAssistantSaid(say, null)
-                speak(say, UTTERANCE_FINAL)
+                speak(say, UTTERANCE_FILL_DONE)
+            }
+            "bye" -> {
+                // Житель отказался продолжать разговор (см. byeRule в
+                // backend/src/prompt.js) — прощание считаем локально по
+                // времени на устройстве, а не доверяем модели его
+                // придумывать; она и не пытается, message/say тут null.
+                val farewell = buildFarewell()
+                endSession()
+                listener.onAssistantSaid(farewell, null)
+                speak(farewell, UTTERANCE_FINAL)
             }
             else -> {
                 endSession()
@@ -341,11 +356,49 @@ class VoiceAssistant(
         }
     }
 
+    private fun buildFarewell(): String {
+        val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        return when (hour) {
+            in 5..17 -> "Хорошего дня!"
+            in 18..22 -> "Приятного вечера!"
+            else -> "Доброй ночи!"
+        }
+    }
+
+    /**
+     * Спрашивает, нужна ли ещё помощь, вместо того чтобы молча уйти в
+     * IDLE после fill/info — вызывается из onSpeechFinished(UTTERANCE_FILL_DONE).
+     * Вопрос добавляется в history сам (как и обычные "ask"), чтобы
+     * backend видел в контексте, что именно спросили — от этого зависит,
+     * распознает ли модель следующий ответ жителя как настоящий отказ
+     * от разговора (byeRule) или как обычный новый запрос.
+     */
+    private fun askIfAnythingElse() {
+        val question = "Могу ещё чем-то помочь?"
+        history.add("assistant" to question)
+        listener.onAssistantSaid(question, DEFAULT_FOLLOWUP_OPTIONS)
+        speak(question, UTTERANCE_ASK)
+    }
+
     /** Разговор завершён — следующее нажатие кнопки снова начнётся с приветствия. */
     private fun endSession() {
         history.clear()
         knownFields = JSONObject()
         hasGreeted = false
+    }
+
+    /**
+     * "Мягкий" сброс после успешно завершённого дела (fill/info) — в
+     * отличие от endSession(), НЕ сбрасывает hasGreeted (не здороваемся
+     * заново) и сохраняет уже известное имя жителя, но чистит все
+     * транзакционные поля прошлого пропуска/заявки, чтобы модель не
+     * унаследовала их в следующей, никак не связанной просьбе.
+     */
+    private fun softResetForFollowUp() {
+        val residentName = knownFields.optNullableString("residentName", "")
+        knownFields = JSONObject().apply {
+            if (residentName.isNotBlank()) put("residentName", residentName)
+        }
     }
 
     /**
@@ -476,10 +529,10 @@ class VoiceAssistant(
     }
 
     private fun onSpeechFinished(utteranceId: String) {
-        if (utteranceId == UTTERANCE_ASK || utteranceId == UTTERANCE_GREETING) {
-            startListening()
-        } else {
-            setState(State.IDLE)
+        when (utteranceId) {
+            UTTERANCE_ASK, UTTERANCE_GREETING -> startListening()
+            UTTERANCE_FILL_DONE -> askIfAnythingElse()
+            else -> setState(State.IDLE)
         }
     }
 
@@ -492,7 +545,19 @@ class VoiceAssistant(
         private const val UTTERANCE_GREETING = "ds24_greeting"
         private const val UTTERANCE_ASK = "ds24_ask"
         private const val UTTERANCE_FINAL = "ds24_final"
+
+        // Отдельный (не UTTERANCE_FINAL) id для фразы после успешного
+        // fill/info — по нему onSpeechFinished понимает, что нужно не
+        // уходить в IDLE молча, а спросить "ещё чем-то помочь?" и снова
+        // слушать (см. askIfAnythingElse). UTTERANCE_FINAL остаётся для
+        // настоящего конца разговора — ошибки и явное прощание (bye).
+        private const val UTTERANCE_FILL_DONE = "ds24_fill_done"
         private const val TIMEOUT_MS = 10_000
+
+        // Те же варианты, что и в самом первом открытом вопросе "чем могу
+        // помочь" (см. backend/src/prompt.js) — отказаться можно голосом
+        // ("нет, спасибо" и т.п.), отдельная кнопка-отказ не нужна.
+        private val DEFAULT_FOLLOWUP_OPTIONS = listOf("Заказать пропуск", "Оформить заявку", "Про заведения в комплексе")
 
         // Собственный сервер (не Cloudflare — из России без VPN не всегда
         // стабильно доступен), см. /backend/README.md.

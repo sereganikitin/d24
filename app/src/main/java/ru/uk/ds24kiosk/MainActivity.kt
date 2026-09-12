@@ -297,10 +297,22 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
         }
     }
 
-    /** Текст-подпись рядом с маскотом — то, что ассистент сейчас говорит. */
+    /**
+     * Текст-подпись рядом с маскотом — то, что ассистент сейчас говорит.
+     * Максимальная ширина пузыря считается от реальной ширины экрана
+     * (60%, но не меньше 160dp и не больше 260dp), а не берётся фиксированным
+     * числом в XML — на маленьком телефонном экране фиксированные 240dp
+     * почти во всю ширину, а на планшете-киоске текст растягивался бы в
+     * одну неудобную для чтения строку через весь экран.
+     */
     private fun renderAssistantCaption(text: String) {
-        binding.assistantCaption.text = text
-        binding.assistantCaption.visibility = View.VISIBLE
+        val caption = binding.assistantCaption
+        val density = resources.displayMetrics.density
+        val screenWidthDp = resources.displayMetrics.widthPixels / density
+        val maxWidthDp = (screenWidthDp * 0.6f).coerceIn(160f, 260f)
+        caption.maxWidth = (maxWidthDp * density).toInt()
+        caption.text = text
+        caption.visibility = View.VISIBLE
     }
 
     /**

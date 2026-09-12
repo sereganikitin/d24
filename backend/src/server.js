@@ -184,7 +184,7 @@ app.post('/assist', async (req, res) => {
         // Android-клиент. Если модель (несмотря на строгую json-схему)
         // всё же вернула что-то другое — не отдаём это клиенту как есть,
         // а превращаем в обычную дружелюбную ошибку.
-        const KNOWN_CLIENT_TYPES = ['ask', 'fill', 'error', 'info'];
+        const KNOWN_CLIENT_TYPES = ['ask', 'fill', 'error', 'info', 'bye'];
         if (!result || !KNOWN_CLIENT_TYPES.includes(result.type)) {
             console.error('assist: unexpected response shape from model:', JSON.stringify(result));
             return res.json({
