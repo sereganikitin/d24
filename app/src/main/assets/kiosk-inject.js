@@ -144,6 +144,76 @@
         leaf.style.setProperty('color', PURE.ink, 'important');
     }
 
+    // ---------- Скрытие лишнего для общего лобби-аккаунта (2026-09-12) ----------
+    // Планшет в лобби залогинен под одним общим аккаунтом на всех
+    // жителей — разделы "своего" профиля/транспорта/показаний тут не
+    // имеют смысла. Тот же принцип, что и у hidePermanentPassOption:
+    // ищем по видимому тексту, если не нашли — просто ничего не делаем,
+    // остальная страница не страдает.
+
+    // "Показания счётчиков" в левом меню быстрых действий — та же самая
+    // строка, что уже используется в restyleQuickActions (сейчас она
+    // выключена, но текст элемента подтверждён скриншотом 2026-09-12).
+    function hideMeterReadingsAction() {
+        var row = closestRow(findLeafByText('Показания счетчиков'));
+        if (row) row.style.setProperty('display', 'none', 'important');
+    }
+
+    // Карточка "К оплате" / "Всё оплачено" — тот же поиск, что и в
+    // restyleStatusCard (тоже выключенной), просто вместо перекраски
+    // прячем целиком.
+    function hidePaymentCard() {
+        var leaf = findLeafByText('Всё оплачено');
+        if (!leaf) return;
+        var card = leaf.parentElement && leaf.parentElement.parentElement
+            ? leaf.parentElement.parentElement
+            : leaf.parentElement;
+        if (card) card.style.setProperty('display', 'none', 'important');
+    }
+
+    // Нижняя навигация (Главное/Помещение/Обращения/Платежи/Профиль) не
+    // нужна на общем лобби-аккаунте. Поднимаемся от одного известного
+    // пункта вверх по дереву, пока не найдём предка, который содержит
+    // ВСЕ остальные подписи панели — это и есть сама панель целиком.
+    function findAncestorContainingAll(startEl, texts) {
+        var node = startEl;
+        for (var i = 0; i < 6 && node; i++) {
+            var full = node.textContent || '';
+            var hasAll = texts.every(function (t) { return full.indexOf(t) !== -1; });
+            if (hasAll) return node;
+            node = node.parentElement;
+        }
+        return null;
+    }
+
+    function hideBottomNav() {
+        var home = findLeafByText('Главное');
+        if (!home) return;
+        var bar = findAncestorContainingAll(home, ['Помещение', 'Обращения', 'Платежи', 'Профиль']);
+        if (bar) bar.style.setProperty('display', 'none', 'important');
+    }
+
+    // Иконки уведомлений/профиля справа вверху — без подписи (только
+    // значки), поэтому findLeafByText тут не подходит. Best-effort по
+    // распространённым aria-label/title — DOM этого места не подтверждён
+    // скриншотом (иконки на фото без текста), поэтому если ни один
+    // вариант не совпал, просто ничего не скрываем. Дайте знать, если на
+    // устройстве не сработает — понадобится реальная разметка (DevTools),
+    // фото тут не поможет.
+    function findByAccessibleLabel(candidates) {
+        var selector = candidates.map(function (c) {
+            return '[aria-label*="' + c + '" i],[title*="' + c + '" i]';
+        }).join(',');
+        return document.querySelector(selector);
+    }
+
+    function hideHeaderIcons() {
+        var bell = findByAccessibleLabel(['уведомлен', 'notification']);
+        if (bell) clickableFrom(bell).style.setProperty('display', 'none', 'important');
+        var profile = findByAccessibleLabel(['профил', 'profile', 'аккаунт', 'account']);
+        if (profile) clickableFrom(profile).style.setProperty('display', 'none', 'important');
+    }
+
     // ---------- Модалка "Заказать пропуск" → "На въезд" ----------
     // На форме есть переключатель "Срок действия": Одноразовый / Постоянный.
     // Постоянного пропуска на авто по факту быть не должно — прячем кнопку,
@@ -309,6 +379,10 @@
         // restyleQuickActions();
         // restyleStatusCard();
         hidePermanentPassOption();
+        hideMeterReadingsAction();
+        hidePaymentCard();
+        hideBottomNav();
+        hideHeaderIcons();
     }
 
     function safeApplyAll() {
