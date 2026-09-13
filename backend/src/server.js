@@ -6,7 +6,10 @@ import { synthesizeSpeech } from './providers/yandex-tts.js';
 import { searchAndSummarize } from './providers/yandex-search.js';
 import { searchVkusVillProducts, getVkusVillDiscounts } from './providers/vkusvill-mcp.js';
 import { isKnownApartment, isKnownParkingSpot, warmDs24Cache } from './providers/ds24-api.js';
-import { classifyPassTypeByKeywords, classifyRequestKindByKeywords } from './prompt.js';
+import {
+    classifyPassTypeByKeywords, classifyRequestKindByKeywords,
+    classifyDeclineByKeywords, isFollowUpQuestion, FIELD_KEYS,
+} from './prompt.js';
 
 /**
  * Прокси между киоском и LLM: держит API-ключ на своей стороне (в
@@ -74,6 +77,27 @@ app.post('/assist', async (req, res) => {
     if (!knownFields.passType) {
         const guessed = classifyPassTypeByKeywords(transcript);
         if (guessed) knownFields.passType = guessed;
+    }
+
+    // 2026-09-13: отказ от продолжения разговора после открытого "Могу
+    // ещё чем-то помочь?" — перехватывается ДО модели, не через промпт.
+    // Живая проверка показала, что YandexGPT на этом сценарии 3/3 раза
+    // игнорировал явное правило + подходящий пример и вместо "bye"
+    // заново собирал "fill" из пропуска, уже видимого в history — из-за
+    // этого житель попадал в бесконечный цикл "форма → готово →
+    // Могу ещё чем-то помочь? → нет → снова та же форма". См. подробное
+    // объяснение в prompt.js рядом с isFollowUpQuestion/
+    // classifyDeclineByKeywords. Здесь короткий и однозначный отказ
+    // сразу завершает разговор, не спрашивая модель вообще.
+    const lastAssistantTurn = [...history].reverse().find((turn) => turn && turn.role === 'assistant');
+    if (lastAssistantTurn && isFollowUpQuestion(lastAssistantTurn.text) && classifyDeclineByKeywords(transcript)) {
+        const byeFields = {};
+        for (const key of FIELD_KEYS) byeFields[key] = null;
+        if (knownFields.residentName) byeFields.residentName = knownFields.residentName;
+        return res.json({
+            type: 'bye', question: null, say: null, query: null,
+            action: null, fields: byeFields, message: null, options: null,
+        });
     }
 
     const providerName = String(process.env.LLM_PROVIDER || 'yandexgpt').toLowerCase();

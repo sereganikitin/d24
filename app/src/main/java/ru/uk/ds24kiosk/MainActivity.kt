@@ -224,7 +224,13 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
      *  приглашение поговорить, никакого обращения к backend ещё не было. */
     private fun renderConciergeIdle() {
         binding.conciergeWebView.evaluateJavascript(
-            "window.DS24Concierge.render({say:'Скажите «Консьерж» или нажмите «Говорите» — я рядом.'," +
+            // 2026-09-13: убрано "Скажите «Консьерж» или" — реального
+            // распознавания кодового слова нет (нужен отдельный
+            // постоянно слушающий движок), а текст обещал то, чего
+            // приложение не умеет. По словам заказчика, это не
+            // критично без настоящего wake-word, лишь бы текст не вводил
+            // в заблуждение.
+            "window.DS24Concierge.render({say:'Нажмите «Говорите» — я рядом.'," +
                 "hint:'Помощник ждёт обращения', options: null, result: null}); " +
                 "window.DS24Concierge.setState('idle');",
             null,
@@ -412,6 +418,16 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
                     // шаге проверки заполненной формы (см. onAssistantSaid).
                     openConcierge()
                     renderConciergeIdle()
+                    // Реальный сайт мог остаться с открытой модалкой/
+                    // заполненной формой прошлого разговора (пропуск/
+                    // заявка) — перезагружаем его именно тут, на ИСТИННОМ
+                    // конце разговора, а не сразу после "fill" (там форму
+                    // как раз нужно оставить видимой для проверки). Иначе
+                    // следующий разговор начинался бы поверх чужого
+                    // "хвоста" с прошлого раза (баг с реального устройства,
+                    // 2026-09-13). Сайт сейчас скрыт под консьержем — сброс
+                    // не будет заметен жителю.
+                    binding.webView.reload()
                 } else {
                     val jsState = when (state) {
                         VoiceAssistant.State.LISTENING -> "listening"

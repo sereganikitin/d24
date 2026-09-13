@@ -280,7 +280,12 @@
         if (!modal) return;
         modal.style.setProperty('background', DARK_FORM.bg, 'important');
         modal.querySelectorAll('h1,h2,h3,h4,h5,h6,span,div,p,label').forEach(function (el) {
-            if (el.children.length === 0) {
+            // Текст ВНУТРИ кнопок (например подпись "Заказать") не трогаем —
+            // фон кнопки мы намеренно оставляем родным/светлым (см. ниже), и
+            // если перекрасить только текст в светлый, подпись сливается с
+            // таким же светлым фоном и кнопка визуально исчезает. Это и
+            // была причина бага "нет кнопки Заказать" на реальном устройстве.
+            if (el.children.length === 0 && !el.closest('button')) {
                 el.style.setProperty('color', DARK_FORM.text, 'important');
             }
         });
