@@ -411,11 +411,15 @@ class VoiceAssistant(
         fields.optNullableStringOrNull("destinationApartment")?.let { lines.add("Апартамент" to it) }
         fields.optNullableStringOrNull("serviceCategory")?.let { lines.add("Категория" to it) }
         fields.optNullableStringOrNull("serviceQuantity")?.let { lines.add("Количество мешков" to it) }
+        fields.optNullableStringOrNull("appealTopic")?.let { lines.add("Тема" to it) }
+        fields.optNullableStringOrNull("appealDetail")?.let { lines.add("Детали" to it) }
+        fields.optNullableStringOrNull("appealComment")?.let { lines.add("Комментарий" to it) }
         if (lines.isEmpty()) return null
         val title = when (action) {
             "order_car_pass" -> "Пропуск на машину"
             "order_walkin_pass" -> "Пропуск для гостя"
             "order_service_trash_removal" -> "Вывоз мусора"
+            "create_appeal" -> "Обращение в УК"
             else -> "Готово"
         }
         return ConciergeResult(title, null, lines)
@@ -516,6 +520,7 @@ class VoiceAssistant(
         val jsFunction = when (action) {
             "order_walkin_pass" -> "fillWalkinPass"
             "order_service_trash_removal" -> "fillServiceTrashRemoval"
+            "create_appeal" -> "fillServiceAppeal"
             else -> "fillCarPass"
         }
         webView.evaluateJavascript(
@@ -649,7 +654,7 @@ class VoiceAssistant(
         // Те же варианты, что и в самом первом открытом вопросе "чем могу
         // помочь" (см. backend/src/prompt.js) — отказаться можно голосом
         // ("нет, спасибо" и т.п.), отдельная кнопка-отказ не нужна.
-        private val DEFAULT_FOLLOWUP_OPTIONS = listOf("Заказать пропуск", "Оформить заявку", "Про заведения в комплексе")
+        private val DEFAULT_FOLLOWUP_OPTIONS = listOf("Заказать пропуск", "Оформить заявку", "Обращение в УК", "Про заведения в комплексе")
 
         // Собственный сервер (не Cloudflare — из России без VPN не всегда
         // стабильно доступен), см. /backend/README.md.

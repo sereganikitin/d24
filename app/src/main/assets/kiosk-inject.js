@@ -33,7 +33,12 @@
     };
 
     function findLeafByText(text) {
-        var all = document.querySelectorAll('h1,h2,h3,h4,h5,span,div,p,a,button');
+        // 'li' добавлен для пунктов выпадающих списков (см.
+        // fillServiceAppeal ниже) — типичные кастомные select/autocomplete
+        // рисуют опции как <li>текст</li> без вложенных элементов, чего не
+        // было в исходном наборе тегов (кнопки/вкладки формы пропуска —
+        // div/span/button).
+        var all = document.querySelectorAll('h1,h2,h3,h4,h5,span,div,p,a,button,li');
         for (var i = 0; i < all.length; i++) {
             var el = all[i];
             if (el.children.length === 0 && el.textContent.trim() === text) return el;
@@ -431,9 +436,103 @@
         }, 350);
     }
 
+    // ---------- Обращение в УК на свободную тему ("Новое обращение") ----------
+    // DOM подтверждён скриншотами 2026-09-13: кнопка "Создать обращение" в
+    // левом меню открывает модалку с двумя ЗАВИСИМЫМИ выпадающими
+    // списками "Тема"/"Детали" (Детали наполняется после выбора Темы), а
+    // после выбора обоих появляется необязательное поле "Комментарий"
+    // (textarea, placeholder "Введите текст заявки, например...") и
+    // необязательное вложение фото (не трогаем). И Тема, и Детали — это
+    // выбор из готового списка, а не свободный текст, несмотря на
+    // название задачи "на свободную тему" — свободная часть тут именно
+    // комментарий (см. APPEAL_TOPICS/APPEAL_DETAILS в backend/src/prompt.js).
+    //
+    // Сама разметка списков (какой элемент кликабелен, чтобы открыть
+    // список) НЕ подтверждена скриншотом — судя по виду (плейсхолдер
+    // "Выберите из списка" + стрелка, не нативный <select>), это
+    // кастомный компонент вроде MUI Select/Autocomplete, у которого
+    // кликабельный триггер обычно помечен role="button"/role="combobox"/
+    // aria-haspopup. Это best-effort первая версия по аналогии с
+    // fillWalkinPass — если предположение не подтвердится, функция тихо
+    // останавливается на том шаге, где не нашла элемент, дальше житель
+    // просто доделывает форму сам, ничего не ломается.
+    function findSelectTriggerByLabelPrefix(prefix) {
+        var all = document.querySelectorAll('h1,h2,h3,h4,h5,span,div,p,label');
+        var label = null;
+        for (var i = 0; i < all.length; i++) {
+            var el = all[i];
+            if (el.children.length === 0 && el.textContent.trim().indexOf(prefix) === 0) {
+                label = el;
+                break;
+            }
+        }
+        if (!label) return null;
+        var scope = label.parentElement;
+        for (var j = 0; j < 3 && scope; j++) {
+            var trigger = scope.querySelector('[role="button"], [role="combobox"], [aria-haspopup]');
+            if (trigger) return trigger;
+            scope = scope.parentElement;
+        }
+        return null;
+    }
+
+    // Кликает по пункту списка с точным совпадением текста (появляется в
+    // DOM уже после клика по триггеру, обычно как <li>) — true, если пункт
+    // найден и клик выполнен.
+    function clickOptionByText(text) {
+        var leaf = findLeafByText(text);
+        if (!leaf) return false;
+        clickableFrom(leaf).click();
+        return true;
+    }
+
+    function fillServiceAppeal(fields) {
+        fields = fields || {};
+        var createBtn = clickableFrom(findLeafByText('Создать обращение'));
+        if (!createBtn) return;
+        createBtn.click();
+
+        setTimeout(function () {
+            if (!fields.appealTopic) return;
+            var themeTrigger = findSelectTriggerByLabelPrefix('Тема');
+            if (!themeTrigger) return;
+            themeTrigger.click();
+
+            setTimeout(function () {
+                if (!clickOptionByText(fields.appealTopic)) return;
+
+                setTimeout(function () {
+                    // Детали автовыбираем, только если backend прислал
+                    // конкретный пункт (сейчас это гарантировано только
+                    // для темы "Начисления и оплаты" — единственной, чей
+                    // список деталей увиден целиком, см. APPEAL_DETAILS).
+                    // Для остальных тем поле остаётся пустым — это
+                    // единственное, что жителю нужно доделать самому.
+                    if (fields.appealDetail) {
+                        var detailTrigger = findSelectTriggerByLabelPrefix('Детали');
+                        if (detailTrigger) {
+                            detailTrigger.click();
+                            setTimeout(function () {
+                                clickOptionByText(fields.appealDetail);
+                            }, 300);
+                        }
+                    }
+
+                    if (fields.appealComment) {
+                        setTimeout(function () {
+                            var comment = document.querySelector('textarea[placeholder*="Введите текст заявки"]');
+                            if (comment) setNativeValue(comment, fields.appealComment);
+                        }, fields.appealDetail ? 600 : 250);
+                    }
+                }, 300);
+            }, 350);
+        }, 350);
+    }
+
     window.__ds24Voice = {
         fillCarPass: fillCarPass,
         fillWalkinPass: fillWalkinPass,
+        fillServiceAppeal: fillServiceAppeal,
     };
 
     function applyAll() {
