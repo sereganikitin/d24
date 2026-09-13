@@ -286,6 +286,7 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
                                 r.lines.forEach { (k, v) -> put(JSONObject().apply { put("k", k); put("v", v) }) }
                             },
                         )
+                        put("phone", r.phone)
                     }
                 },
             )
@@ -315,6 +316,34 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
         @JavascriptInterface
         fun onMicTap() {
             runOnUiThread { startVoiceAssistant() }
+        }
+
+        /**
+         * Кнопка "Позвонить" на карточке контакта (управляющий/охрана и
+         * т.п., см. VoiceAssistant.buildContactResult). ACTION_DIAL, а не
+         * ACTION_CALL — не требует разрешения CALL_PHONE и не звонит
+         * молча сам, только открывает системный номеронабиратель с уже
+         * подставленным номером, дальше житель сам подтверждает звонок.
+         * Планшет может оказаться без голосовой SIM/приложения
+         * "Телефон" вообще (это ещё не подтверждено заказчиком) — в этом
+         * случае ACTION_DIAL просто не найдёт, чем открыться, поэтому
+         * ловим это и говорим об этом тостом, а не падаем.
+         */
+        @JavascriptInterface
+        fun onCall(phone: String?) {
+            if (phone.isNullOrBlank()) return
+            runOnUiThread {
+                val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))
+                try {
+                    startActivity(intent)
+                } catch (_: Exception) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "На этом устройстве нет приложения для звонков",
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
+            }
         }
     }
 

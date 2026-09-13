@@ -41,8 +41,15 @@ class VoiceAssistant(
 
     /** Карточка-итог под репликой консьержа (см. assets/concierge/index.html,
      *  result). Собирается из уже пришедших fields — только то, что
-     *  реально известно, без выдуманных номеров заявок/QR. */
-    data class ConciergeResult(val title: String, val tag: String?, val lines: List<Pair<String, String>>)
+     *  реально известно, без выдуманных номеров заявок/QR. phone —
+     *  непусто только для карточки контакта (управляющий/охрана/
+     *  диспетчер) — включает кнопку "Позвонить" на экране консьержа. */
+    data class ConciergeResult(
+        val title: String,
+        val tag: String?,
+        val lines: List<Pair<String, String>>,
+        val phone: String? = null,
+    )
 
     interface Listener {
         fun onStateChanged(state: State)
@@ -360,9 +367,14 @@ class VoiceAssistant(
                 // Справочный ответ (где кофе/аптека и т.п.) — тоже не
                 // конец разговора, а законченный маленький "запрос-ответ"
                 // — так же ведёт к "ещё чем-то помочь?", как и "fill".
+                // Отдельный случай — контакт (управляющий/охрана/
+                // диспетчер, см. CONTACT_DIRECTORY в backend/src/prompt.js):
+                // если модель прислала phone, показываем карточку с
+                // кнопкой "Позвонить" вместо обычного текстового ответа.
                 val say = response.optNullableString("say", "")
+                val result = buildContactResult(response)
                 softResetForFollowUp()
-                listener.onAssistantSaid(say, null, null)
+                listener.onAssistantSaid(say, null, result)
                 speak(say, UTTERANCE_FILL_DONE)
             }
             "bye" -> {
@@ -407,6 +419,24 @@ class VoiceAssistant(
             else -> "Готово"
         }
         return ConciergeResult(title, null, lines)
+    }
+
+    /**
+     * Карточка контакта (управляющий/охрана/охрана паркинга/диспетчер) —
+     * непусто, только когда backend вернул top-level "phone" (см.
+     * CONTACT_DIRECTORY + contactsRule в backend/src/prompt.js). Номер и
+     * имя/роль читаются жителю голосом через "say" как обычно — карточка
+     * с кнопкой "Позвонить" просто избавляет от необходимости запоминать
+     * номер на слух.
+     */
+    private fun buildContactResult(response: JSONObject): ConciergeResult? {
+        val phone = response.optNullableStringOrNull("phone") ?: return null
+        val role = response.optNullableStringOrNull("contactRole")
+        val name = response.optNullableStringOrNull("contactName")
+        val lines = mutableListOf<Pair<String, String>>()
+        name?.let { lines.add("Имя" to it) }
+        lines.add("Телефон" to phone)
+        return ConciergeResult(title = role ?: "Контакт", tag = null, lines = lines, phone = phone)
     }
 
     private fun buildFarewell(): String {

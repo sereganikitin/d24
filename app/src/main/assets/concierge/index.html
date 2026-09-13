@@ -123,6 +123,14 @@
   }
   .result-line-k { font: 400 clamp(11px, 1.5vh, 15px)/1.4 'Manrope', sans-serif; color: rgba(242,239,233,.5); }
   .result-line-v { font: 500 clamp(12px, 1.7vh, 17px)/1.4 'Manrope', sans-serif; color: var(--text-bright); text-align: right; }
+  .result-call-btn {
+    cursor: pointer; align-self: flex-start; display: flex; align-items: center; gap: clamp(6px, 1.2vw, 12px);
+    background: rgba(158,136,111,.14); border: 1px solid rgba(158,136,111,.45);
+    border-radius: 100px; padding: clamp(8px, 1.4vh, 12px) clamp(14px, 2.2vw, 24px);
+    font: 500 clamp(12px, 1.7vh, 15px)/1 'Manrope', sans-serif;
+    color: #e8dcc9; white-space: nowrap;
+  }
+  .result-call-btn:hover { background: rgba(158,136,111,.24); }
 
   .options { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(8px, 1.4vw, 14px); align-content: start; }
   .option-btn {
@@ -359,6 +367,22 @@
       row.appendChild(v);
       lines.appendChild(row);
     });
+
+    // Карточка контакта (управляющий/охрана и т.п.) — если пришёл номер,
+    // добавляем кнопку звонка вместо того, чтобы житель сам набирал его
+    // на своём телефоне. См. MainActivity.ConciergeBridge.onCall.
+    var existingCallBtn = card.querySelector('.result-call-btn');
+    if (existingCallBtn) existingCallBtn.remove();
+    if (result.phone) {
+      var callBtn = document.createElement('button');
+      callBtn.className = 'result-call-btn';
+      callBtn.textContent = 'Позвонить';
+      callBtn.addEventListener('click', function () {
+        var b = bridge();
+        if (b) b.onCall(result.phone);
+      });
+      card.appendChild(callBtn);
+    }
   }
 
   // Анимация персонажа (моргание/рот/индикатор) переключается отдельно
@@ -434,6 +458,7 @@
       onOption: function (i) { console.log('preview: onOption', i); },
       onBack: function () { console.log('preview: onBack'); },
       onMicTap: function () { console.log('preview: onMicTap'); },
+      onCall: function (phone) { console.log('preview: onCall', phone); },
     };
   }
 })();
