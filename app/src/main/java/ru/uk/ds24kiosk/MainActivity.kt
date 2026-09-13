@@ -479,6 +479,13 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
                 if (result != null) closeConcierge() else openConcierge()
             }
 
+            override fun onUserSaid(text: String) {
+                binding.conciergeWebView.evaluateJavascript(
+                    "window.DS24Concierge.renderUserSaid(${JSONObject.quote(text)})",
+                    null,
+                )
+            }
+
             override fun onError(message: String) {
                 Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
             }

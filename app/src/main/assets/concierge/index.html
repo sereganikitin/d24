@@ -75,7 +75,7 @@
     display: flex; align-items: center; justify-content: space-between;
     border-bottom: 1px solid rgba(255,255,255,.06);
   }
-  .topbar img { height: clamp(18px, 3.5vh, 30px); width: auto; display: block; }
+  .topbar img { height: clamp(26px, 5.5vh, 44px); width: auto; display: block; }
   .topbar-status {
     display: flex; align-items: center; gap: clamp(10px, 2vw, 28px);
     font: 400 clamp(11px, 1.8vh, 15px)/1 'Manrope', sans-serif; color: rgba(242,239,233,.45);
@@ -158,8 +158,18 @@
     animation: halo 4s ease-in-out infinite;
   }
   .avatar-niche {
-    position: relative; flex: none;
-    width: clamp(84px, 18vw, 308px); height: clamp(120px, 52vh, 480px);
+    position: relative; flex: 1 1 auto; min-height: 0;
+    width: clamp(84px, 18vw, 308px);
+    /* Раньше была фиксированная height: clamp(120px, 52vh, 480px) —
+       при typичной высоте контента (после topbar/bottombar) это
+       заметно меньше, чем реально доступно, а .right-col прижимает
+       арку к низу (justify-content: flex-end) — сверху оставался
+       пустой зазор, и верх арки не совпадал с верхом карточки
+       "Консьерж говорит". flex:1 растягивает арку на всю доступную
+       высоту колонки (её низ по-прежнему у нижней панели, а верх — на
+       уровне верха message-card), max-height подстраховывает от
+       чрезмерного растяжения на непропорционально высоких экранах. */
+    max-height: clamp(120px, 60vh, 480px);
     /* Пропорция арки как в макете (154/308=50% по ширине сверху,
        154/480≈32% по высоте, 10px≈3%/2% снизу) — в процентах, а не в
        px, чтобы форма не искажалась при любом реальном размере. */
@@ -244,7 +254,7 @@
   <div class="content">
     <div class="left-col">
       <div class="message-card">
-        <div class="message-eyebrow">Консьерж говорит</div>
+        <div class="message-eyebrow" id="messageEyebrow">Консьерж говорит</div>
         <div class="message-text" id="messageText"></div>
         <div class="message-tail"></div>
       </div>
@@ -401,10 +411,20 @@
     // data: { say, hint, options: [{label, sub}], result: {title, tag, lines:[{k,v}]} | null }
     render: function (data) {
       data = data || {};
+      document.getElementById('messageEyebrow').textContent = 'Консьерж говорит';
       document.getElementById('messageText').textContent = data.say || '';
       document.getElementById('hintText').textContent = data.hint || '';
       renderOptions(data.options);
       renderResult(data.result);
+    },
+    // Распознанная речь жителя — показываем её в той же карточке, что и
+    // обычно реплику ассистента (для наглядности: видно, что именно
+    // услышал микрофон, до того как ассистент успеет ответить), сменив
+    // подпись на "ВЫ СКАЗАЛИ". Следующий обычный render() сам вернёт
+    // подпись обратно на "Консьерж говорит".
+    renderUserSaid: function (text) {
+      document.getElementById('messageEyebrow').textContent = 'Вы сказали';
+      document.getElementById('messageText').textContent = text || '';
     },
     // state: 'idle' | 'listening' | 'thinking' | 'speaking'
     setState: function (state) {

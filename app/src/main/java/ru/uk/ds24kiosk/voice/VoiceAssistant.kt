@@ -65,6 +65,14 @@ class VoiceAssistant(
          */
         fun onAssistantSaid(text: String, options: List<String>?, result: ConciergeResult?)
 
+        /**
+         * Распознанный текст жителя (голосом или тапом по кнопке-подсказке) —
+         * вызывается сразу, ДО обращения к backend, чтобы житель сразу видел
+         * на экране, что именно услышал микрофон (для наглядности/доверия к
+         * распознаванию), не дожидаясь ответа ассистента.
+         */
+        fun onUserSaid(text: String)
+
         fun onError(message: String)
 
         /**
@@ -292,6 +300,7 @@ class VoiceAssistant(
 
     private fun sendTranscript(transcript: String) {
         history.add("user" to transcript)
+        listener.onUserSaid(transcript)
         setState(State.THINKING)
         Thread {
             try {
