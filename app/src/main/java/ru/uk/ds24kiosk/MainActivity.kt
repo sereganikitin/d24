@@ -17,6 +17,7 @@ import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebSettings
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -51,9 +52,15 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
     // ровно ту же строку, что ушла бы голосом).
     private var lastConciergeOptions: List<String> = emptyList()
 
+    // Начинаем с предположения "не на экране логина" — оно же
+    // изначальное состояние консьержа (открыт по умолчанию, см.
+    // setupConciergeWebView). Если самая первая настоящая проверка
+    // (refreshAuthState) всё же найдёт экран логина — сработает переход
+    // false→true и консьерж корректно спрячется, открыв его жителю.
+    private var wasOnLoginScreen = false
+
     private val micPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
-            openConcierge()
             voiceAssistant.startListening()
         } else {
             Toast.makeText(this, R.string.voice_mic_permission_needed, Toast.LENGTH_LONG).show()
@@ -187,15 +194,22 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
     /**
      * Второй, полностью независимый WebView — полноэкранный голосовой
      * консьерж (assets/concierge/index.html), поверх основного WebView
-     * с lk.purehome.ru. Обычные настройки JS/DOM хранилища тут не
-     * нужны в таком объёме, как для сайта УК — своя простая страница,
-     * без куки/логина. См. ConciergeBridge ниже — это её window.ConciergeBridge.
+     * с lk.purehome.ru. Это теперь экран по умолчанию (виден сразу при
+     * запуске, ещё до логина/любого тапа) — сайт УК живёт под ним и
+     * временно открывается только на шаге проверки заполненной формы
+     * (см. onAssistantSaid: result != null → closeConcierge()).
      */
     private fun setupConciergeWebView() {
         val concierge = binding.conciergeWebView
         concierge.settings.javaScriptEnabled = true
         concierge.addJavascriptInterface(ConciergeBridge(), "ConciergeBridge")
+        concierge.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView, url: String?) {
+                renderConciergeIdle()
+            }
+        }
         concierge.loadUrl("file:///android_asset/concierge/index.html")
+        openConcierge()
     }
 
     private fun openConcierge() {
@@ -204,6 +218,34 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
 
     private fun closeConcierge() {
         binding.conciergeWebView.visibility = View.GONE
+    }
+
+    /** Стартовый экран консьержа до первого "Говорите" — просто
+     *  приглашение поговорить, никакого обращения к backend ещё не было. */
+    private fun renderConciergeIdle() {
+        binding.conciergeWebView.evaluateJavascript(
+            "window.DS24Concierge.render({say:'Скажите «Консьерж» или нажмите «Говорите» — я рядом.'," +
+                "hint:'Помощник ждёт обращения', options: null, result: null}); " +
+                "window.DS24Concierge.setState('idle');",
+            null,
+        )
+    }
+
+    /**
+     * Запускает голосового помощника, сначала убедившись, что есть
+     * разрешение на микрофон — раньше эта проверка жила только в
+     * клике по внешней кнопке-триггеру, но теперь единственный вход в
+     * разговор — кнопка "Говорите" внутри самого консьержа
+     * (ConciergeBridge.onMicTap), так что проверка переехала сюда.
+     */
+    private fun startVoiceAssistant() {
+        val hasPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+        if (hasPermission) {
+            voiceAssistant.startListening()
+        } else {
+            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
     }
 
     /**
@@ -257,15 +299,16 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
 
         @JavascriptInterface
         fun onBack() {
-            runOnUiThread {
-                voiceAssistant.cancel()
-                closeConcierge()
-            }
+            // cancel() сам сбросит на IDLE, а onStateChanged(IDLE) вернёт
+            // консьержа к приглашению (см. setupVoiceAssistant) — сайт
+            // тут вообще не при чём, "Назад" всегда остаётся внутри
+            // консьержа, а не открывает реальную страницу.
+            runOnUiThread { voiceAssistant.cancel() }
         }
 
         @JavascriptInterface
         fun onMicTap() {
-            runOnUiThread { voiceAssistant.startListening() }
+            runOnUiThread { startVoiceAssistant() }
         }
     }
 
@@ -323,9 +366,20 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
             val onLoginScreen = result == "true"
             binding.sessionExpiredBadge.visibility = if (onLoginScreen) View.VISIBLE else View.GONE
             binding.voiceAssistantButton.visibility = if (onLoginScreen) View.GONE else View.VISIBLE
-            if (onLoginScreen && ::voiceAssistant.isInitialized) {
-                voiceAssistant.cancel()
-                closeConcierge()
+            // Реагируем только на ПЕРЕХОД между экраном логина и обычным
+            // состоянием, а не на каждый опрос (idleReturnRunnable тикает
+            // раз в 5с) — иначе это же самое openConcierge() спорило бы с
+            // намеренным закрытием консьержа на шаге проверки заполненной
+            // формы (см. onAssistantSaid), которое тоже держит логин уже
+            // пройденным.
+            if (onLoginScreen != wasOnLoginScreen) {
+                if (onLoginScreen) {
+                    if (::voiceAssistant.isInitialized) voiceAssistant.cancel()
+                    closeConcierge()
+                } else {
+                    openConcierge()
+                }
+                wasOnLoginScreen = onLoginScreen
             }
         }
     }
@@ -352,7 +406,12 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
         voiceAssistant = VoiceAssistant(this, binding.webView, object : VoiceAssistant.Listener {
             override fun onStateChanged(state: VoiceAssistant.State) {
                 if (state == VoiceAssistant.State.IDLE) {
-                    closeConcierge()
+                    // Конец разговора (ошибка/прощание/"Назад") — просто
+                    // возвращаем консьержа к начальному приглашению, а не
+                    // прячем экран: сайт под ним нужен видимым только на
+                    // шаге проверки заполненной формы (см. onAssistantSaid).
+                    openConcierge()
+                    renderConciergeIdle()
                 } else {
                     val jsState = when (state) {
                         VoiceAssistant.State.LISTENING -> "listening"
@@ -366,6 +425,13 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
 
             override fun onAssistantSaid(text: String, options: List<String>?, result: VoiceAssistant.ConciergeResult?) {
                 renderConcierge(text, options, result)
+                // result непустой ровно один раз — сразу после "fill":
+                // прячем консьержа и показываем настоящий сайт с уже
+                // заполненной (и теперь тёмной, см. kiosk-inject.js)
+                // формой, чтобы житель проверил и сам нажал «Заказать».
+                // На следующем шаге ("ещё чем-то помочь?") result снова
+                // null, и консьерж сам вернётся поверх сайта.
+                if (result != null) closeConcierge() else openConcierge()
             }
 
             override fun onError(message: String) {
@@ -376,16 +442,12 @@ class MainActivity : AppCompatActivity(), KioskWebViewClient.Listener {
                 externalRecognitionLauncher.launch(intent)
             }
         })
-        binding.voiceAssistantButton.setOnClickListener {
-            val hasPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
-                PackageManager.PERMISSION_GRANTED
-            if (hasPermission) {
-                openConcierge()
-                voiceAssistant.startListening()
-            } else {
-                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-            }
-        }
+        // Консьерж теперь виден по умолчанию (см. setupConciergeWebView) —
+        // эта маленькая кнопка нужна только на случай, если экран сейчас
+        // скрыт (идёт проверка заполненной формы на настоящем сайте, см.
+        // onAssistantSaid) и житель хочет вернуться к ассистенту вручную,
+        // не дожидаясь автоматического "ещё чем-то помочь?".
+        binding.voiceAssistantButton.setOnClickListener { openConcierge() }
     }
 
     private fun onAdminGestureTriggered() {

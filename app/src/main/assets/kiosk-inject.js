@@ -234,6 +234,69 @@
         }
     }
 
+    // ---------- Тёмная тема модалки пропуска (2026-09-13) ----------
+    // Голосовой консьерж теперь полноэкранный и тёмный (см.
+    // assets/concierge/index.html) — после того как форма заполнена
+    // голосом, житель на секунду видит настоящий сайт, чтобы проверить
+    // и нажать «Заказать». Чтобы это не выглядело как "чужой светлый
+    // сайт" после тёмного консьержа, красим саму модалку в ту же
+    // палитру. ВАЖНО: точный DOM этой модалки не подтверждён
+    // скриншотом (в отличие от текстовых меток вроде "Госномер", уже
+    // проверенных в fillCarPass) — это первый эксперимент, палитра
+    // точная (взята из макета консьержа), но насколько хорошо она ляжет
+    // на реальную вёрстку модалки — нужно проверить на устройстве и
+    // прислать скриншот, если что-то будет выглядеть не так.
+    var DARK_FORM = {
+        bg: '#141416',
+        card: '#1c1c1f',
+        text: '#f2efe9',
+        textBright: '#f7f4ee',
+        accent: '#9e886f',
+    };
+
+    // Модалка — не текст, а контейнер, поэтому findLeafByText не
+    // годится; ищем по НАБЛЮДАЕМОМУ поведению (fixed/absolute поверх
+    // большей части экрана), а не по классам MUI/emotion — это работает
+    // независимо от того, как называются классы в конкретной сборке
+    // сайта.
+    function findModalRootByText(text) {
+        var leaf = findLeafByText(text);
+        if (!leaf) return null;
+        var node = leaf.parentElement;
+        for (var i = 0; i < 14 && node && node !== document.body; i++) {
+            var style = window.getComputedStyle(node);
+            var rect = node.getBoundingClientRect();
+            var coversViewport = rect.width > window.innerWidth * 0.4 && rect.height > window.innerHeight * 0.4;
+            if ((style.position === 'fixed' || style.position === 'absolute') && coversViewport) {
+                return node;
+            }
+            node = node.parentElement;
+        }
+        return null;
+    }
+
+    function applyDarkFormTheme() {
+        var modal = findModalRootByText('На въезд') || findModalRootByText('На вход') || findModalRootByText('Заказать пропуск');
+        if (!modal) return;
+        modal.style.setProperty('background', DARK_FORM.bg, 'important');
+        modal.querySelectorAll('h1,h2,h3,h4,h5,h6,span,div,p,label').forEach(function (el) {
+            if (el.children.length === 0) {
+                el.style.setProperty('color', DARK_FORM.text, 'important');
+            }
+        });
+        modal.querySelectorAll('input, textarea').forEach(function (field) {
+            field.style.setProperty('background', DARK_FORM.card, 'important');
+            field.style.setProperty('color', DARK_FORM.textBright, 'important');
+            field.style.setProperty('border-color', DARK_FORM.accent, 'important');
+        });
+        modal.querySelectorAll('button').forEach(function (btn) {
+            // Фон/цвет кнопок специально не трогаем — среди них есть
+            // главное действие "Заказать" с фирменным акцентом сайта,
+            // затирать его не нужно, только рамка под общий тон.
+            btn.style.setProperty('border-color', DARK_FORM.accent, 'important');
+        });
+    }
+
     // ---------- API для голосового помощника: window.__ds24Voice ----------
     // Открывает "Заказать пропуск → На въезд" и заполняет поля. Вызывается
     // из Android (VoiceAssistant.kt) через evaluateJavascript после того,
@@ -383,6 +446,7 @@
         hidePaymentCard();
         hideBottomNav();
         hideHeaderIcons();
+        applyDarkFormTheme();
     }
 
     function safeApplyAll() {
